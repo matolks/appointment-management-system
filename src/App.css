@@ -1,16 +1,14 @@
-
 * {
   box-sizing: border-box;
-  width: 100vw;
-  height: 100vh;
 }
-
 
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: #1f1f1f;
-  color: #f2f2f2;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  background: #161618;
+  color: #e8e8ea;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 button,
@@ -18,375 +16,582 @@ select {
   font: inherit;
 }
 
-/* Cursor pointer */
 button {
   cursor: pointer;
 }
 
-/* Main shell */
+/* Main app frame */
 .app-shell {
   min-height: 100vh;
-  background: #202020;
+  width: 100%;
+  background: #161618;
 }
 
-/* Top Header */
+/* Top navigation bar */
 .top-bar {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 16px 32px;
-  background: #555;
+  justify-content: space-between;
+  padding: 12px 28px;
+  background: #1e1e21;
+  border-bottom: 1px solid #2c2c30;
+  gap: 16px;
 }
 
-/* Main nav */
+/* Calendar/waitlist navigation */
 .main-nav {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  width: 100%;
-  max-width: 520px;
+  display: flex;
+  gap: 4px;
+  background: #111113;
+  border-radius: 10px;
+  padding: 4px;
+  border: 1px solid #2c2c30;
 }
 
-/* Primary header buttons */
+/* Main navigation button */
 .nav-button {
-  width: 100%;
-  border: 0;
-  border-radius: 22px;
-  padding: 12px 20px;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 22px;
   background: transparent;
-  color: #f2f2f2;
-  font-size: 24px;
-  font-weight: 700;
+  color: #888;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  letter-spacing: 0.01em;
 }
 
-/* Active tab indicator */ 
+.nav-button:hover {
+  color: #e8e8ea;
+}
+
 .nav-button.active {
-  background: #111;
+  background: #2a2a2e;
+  color: #e8e8ea;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-/* Small Action button */
+/* Top-right page action button */
 .corner-action-button {
-  border: 0;
-  border-radius: 18px;
-  padding: 8px 14px;
-  background: transparent;
-  color: #f2f2f2;
-  font-size: 16px;
-  font-weight: 700;
+  border: 1px solid #3a3a40;
+  border-radius: 8px;
+  padding: 7px 16px;
+  background: #2a2a2e;
+  color: #e8e8ea;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .corner-action-button:hover {
-  background: #333;
+  background: #333338;
+  border-color: #4a4a52;
 }
 
-/*
-  Main calendar layout:
-  - left: provider legend
-  - middle: weekly calendar
-  - right: eligible waitlist panel
-*/
+/* Calendar page three-column layout */
 .calendar-page {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 350px;
-  gap: 28px;
-  padding: 24px;
+  grid-template-columns: 160px minmax(0, 1fr) 320px;
+  gap: 20px;
+  padding: 20px 24px;
   width: 100%;
+  min-height: calc(100vh - 61px);
 }
 
-/* Panel styleing */
+/* Shared panel styling */
 .legend-panel,
 .eligible-panel,
 .action-page,
 .waitlist-page {
-  background: #565656;
-  padding: 22px;
+  background: #1e1e21;
+  border: 1px solid #2c2c30;
+  border-radius: 12px;
+  padding: 20px;
 }
 
+/* Provider legend panel */
 .legend-panel {
   display: flex;
   flex-direction: column;
-  min-height: 650px;
+  min-height: calc(100vh - 101px);
 }
 
-/* Removes extra top margin from panel headings */
 .legend-panel h2,
 .eligible-panel h2,
 .eligible-panel h3 {
   margin-top: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #666;
 }
 
 /* Provider legend list */
 .provider-list {
-  display: grid;
-  gap: 16px;
-  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
 }
 
+/* Provider legend row */
 .provider-key {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  font-weight: 700;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #c0c0c6;
 }
 
+/* Provider color square */
 .provider-color {
-  width: 22px;
-  height: 28px;
-  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
 
-/* Secondary text-style button */
+/* Low-emphasis link button */
 .secondary-button {
   margin-top: auto;
-  border: 0;
+  border: none;
   background: transparent;
-  color: #f2f2f2;
+  color: #555;
+  font-size: 12px;
   text-align: left;
   text-decoration: underline;
+  padding: 0;
+  transition: color 0.15s;
 }
 
-/* Calendar panel should use the full center column width */
+.secondary-button:hover {
+  color: #888;
+}
+
+/* Calendar center panel */
 .calendar-panel {
   min-width: 0;
   width: 100%;
 }
 
-/*
-  Week header:
-  - left arrow
-  - centered week label
-  - right arrow
-*/
+/* Week navigation controls */
 .week-controls {
   display: grid;
-  grid-template-columns: 60px 1fr 60px;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-/* Week title */
 .week-controls h1 {
   margin: 0;
   text-align: center;
-  font-size: 18px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #c0c0c6;
 }
 
+/* Week arrow button */
 .arrow-button {
-  border: 0;
-  background: transparent;
-  color: #f2f2f2;
-  font-size: 54px;
+  border: 1px solid #2c2c30;
+  border-radius: 8px;
+  background: #1e1e21;
+  color: #888;
+  font-size: 18px;
   line-height: 1;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
 }
 
-/* Five-column weekly calendar grid */
+.arrow-button:hover {
+  background: #2a2a2e;
+  color: #e8e8ea;
+}
+
+/* Calendar weekday grid */
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   width: 100%;
-  min-height: 650px;
-  border-left: 1px solid #333;
-  border-top: 1px solid #333;
-  background: #242424;
+  height: calc(100vh - 149px);
+  min-height: 600px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #2c2c30;
+  background: #1a1a1d;
 }
 
-/* Individual day column */
+/* Calendar day column */
 .day-column {
   min-width: 0;
-  border-right: 1px solid #333;
+  border-right: 1px solid #2c2c30;
 }
 
-/* Day label */
+.day-column:last-child {
+  border-right: none;
+}
+
+/* Day header area */
 .day-header {
-  height: 54px;
-  padding: 8px;
-  border-bottom: 1px solid #333;
-  color: #ddd;
-  font-size: 12px;
+  height: 52px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #2c2c30;
+  background: #1e1e21;
 }
 
-/* Keeps weekday and date on separate lines */
-.day-header span,
+.day-header span {
+  display: block;
+  font-size: 11px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .day-header strong {
   display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #c0c0c6;
+  margin-top: 1px;
 }
 
-/* Body of a single calendar day */
+/* Day body contains time rows and openings */
 .day-body {
   position: relative;
-  height: 596px;
+  height: calc(100% - 52px);
 }
 
-/* Time grid row  */
+/* Calendar time row */
 .time-row {
   height: 10%;
-  border-bottom: 1px solid #333;
-  color: #777;
-  font-size: 11px;
-  padding: 4px;
+  border-bottom: 1px solid #222226;
+  color: #3a3a42;
+  font-size: 10px;
+  padding: 4px 6px;
 }
 
-/* Colored provider opening block */
+/* Calendar opening block */
 .opening-block {
   position: absolute;
-  left: 0;
-  right: 0;
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0;
+  border: none;
+  outline: none;
   color: #111;
-  font-weight: 700;
-  opacity: 0.62;
+  font-weight: 600;
+  font-size: 11px;
+  opacity: 0.82;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  line-height: 1.4;
+  gap: 2px;
+  line-height: 1.3;
+  transition: opacity 0.12s, outline-color 0.12s;
+  text-align: center;
+  padding: 4px;
 }
 
+.opening-block.first-piece {
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
 
-.opening-block:hover,
-.opening-block.selected {
-  opacity: 0.95;
-  outline: 3px solid #fff;
+.opening-block.last-piece {
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.opening-block.opening-hovered {
+  opacity: 1;
+  filter: brightness(1.08);
   z-index: 2;
 }
 
-/* Right panel */ 
-.eligible-panel {
-  min-height: 650px;
+.opening-block.selected {
+  opacity: 1;
+  filter: brightness(1.5);
+  z-index: 3;
 }
 
+/* Right eligible waitlist panel */
+.eligible-panel {
+  min-height: calc(100vh - 101px);
+  overflow-y: auto;
+}
+
+/* Selected opening summary */
 .selected-opening-header {
-  border-bottom: 1px solid #777;
-  margin-bottom: 18px;
-  padding-bottom: 12px;
+  border-bottom: 1px solid #2c2c30;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+}
+
+.selected-opening-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e8e8ea;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-bottom: 4px;
 }
 
 .selected-opening-header p {
-  margin: 6px 0;
+  margin: 4px 0;
+  color: #888;
+  font-size: 13px;
 }
 
+.eligible-panel h3 {
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+
+/* Empty panel message */
 .empty-message {
-  color: #ddd;
-  line-height: 1.5;
+  color: #555;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
-/* Eligible list */
+/* Remove selected opening button */
+.remove-opening-button {
+  margin-top: 10px;
+  border: 1px solid #3a2a2a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #241818;
+  color: #d66;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.remove-opening-button:hover {
+  background: #2d1d1d;
+  border-color: #5a3434;
+}
+
+/* Eligible waitlist card list */
 .eligible-list {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
+/* Eligible waitlist card */
 .eligible-card {
-  display: grid;
-  gap: 12px;
   padding: 14px;
-  background: #333;
-  border: 1px solid #777;
+  background: #111113;
+  border: 1px solid #2c2c30;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s;
+}
+
+.eligible-card:hover {
+  border-color: #3a3a42;
 }
 
 .eligible-card h4 {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8e8ea;
 }
 
 .eligible-card p {
-  margin: 4px 0;
-  color: #ddd;
+  margin: 2px 0;
+  color: #888;
+  font-size: 12px;
+}
+
+/* Tier urgency badge */
+.tier-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #2a2a2e;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+
+.tier-badge.tier-1 {
+  background: #2a1f1f;
+  color: #f07070;
+}
+
+.tier-badge.tier-2 {
+  background: #221f12;
+  color: #d4a644;
+}
+
+.tier-badge.tier-3 {
+  background: #1a2418;
+  color: #6db870;
 }
 
 .eligible-card button {
-  justify-self: start;
-  border: 0;
-  padding: 8px 12px;
-  background: #f2f2f2;
-  color: #111;
-  font-weight: 700;
+  align-self: flex-start;
+  border: 1px solid #3a3a42;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #2a2a2e;
+  color: #e8e8ea;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-/* Full page panel */
+.eligible-card button:hover {
+  background: #333338;
+  border-color: #4a4a52;
+}
+
+/* Full-width waitlist and action pages */
 .waitlist-page,
 .action-page {
-  margin: 24px;
-  min-height: 650px;
+  margin: 20px 24px;
+  min-height: calc(100vh - 101px);
   width: calc(100% - 48px);
 }
 
-/* Header row for the waitlist page */
+/* Page title row */
 .page-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 24px;
-  margin-bottom: 18px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-/* Removes default heading margin where needed */
 .page-header-row h1,
 .action-page h1 {
   margin: 0;
+  font-size: 18px;
+  font-weight: 600;
 }
 
-/* Sort buttons inside table headers */
+/* Clickable table header sort button */
 .table-sort-button {
   width: 100%;
-  border: 0;
+  border: none;
   padding: 0;
   background: transparent;
   color: inherit;
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 12px;
   text-align: left;
+  cursor: pointer;
 }
 
 /* Waitlist table */
 table {
   width: 100%;
   border-collapse: collapse;
-  background: #f8f8f8;
-  color: #222;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #2c2c30;
+  font-size: 13px;
+  color: #c0c0c6;
+  background: #111113;
 }
 
-/* Table cell styling */
 th,
 td {
-  border: 1px solid #ccc;
-  padding: 10px;
+  border-bottom: 1px solid #222226;
+  padding: 10px 12px;
   text-align: left;
   vertical-align: top;
 }
 
 th {
-  background: #e6e6e6;
+  background: #1e1e21;
+  color: #555;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  border-bottom: 1px solid #2c2c30;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+tr:hover td {
+  background: #16161a;
 }
 
 /* Table action buttons */
 td button {
-  margin-right: 8px;
-  margin-bottom: 6px;
-  padding: 6px 10px;
+  margin-right: 6px;
+  margin-bottom: 4px;
+  padding: 4px 10px;
+  border: 1px solid #2c2c30;
+  border-radius: 5px;
+  background: #1e1e21;
+  color: #c0c0c6;
+  font-size: 12px;
+  transition: background 0.12s;
 }
 
-/* Opening list */
+td button:hover {
+  background: #2a2a2e;
+}
+
+/* Opening list on action page */
 .opening-list {
-  display: grid;
-  gap: 12px;
-  margin-top: 24px;
-  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+  max-width: 620px;
 }
 
-/* Opening summary */
+/* Opening list row */
 .opening-list-card {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-  padding: 14px;
-  background: #333;
-  border: 1px solid #777;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #111113;
+  border: 1px solid #2c2c30;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #c0c0c6;
+  align-items: center;
 }
 
+.opening-list-card strong {
+  font-weight: 600;
+  color: #e8e8ea;
+}
+
+.opening-list-card button {
+  border: 1px solid #3a2a2a;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: #241818;
+  color: #d66;
+  font-size: 12px;
+}
+
+.opening-list-card button:hover {
+  background: #2d1d1d;
+  border-color: #5a3434;
+}
+
+/* Single-column layout for smaller screens */
 @media (max-width: 1100px) {
   .calendar-page {
     grid-template-columns: 1fr;
@@ -395,5 +600,9 @@ td button {
   .legend-panel,
   .eligible-panel {
     min-height: auto;
+  }
+
+  .calendar-grid {
+    height: 650px;
   }
 }
