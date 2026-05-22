@@ -1,0 +1,399 @@
+
+* {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+}
+
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #1f1f1f;
+  color: #f2f2f2;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+/* Cursor pointer */
+button {
+  cursor: pointer;
+}
+
+/* Main shell */
+.app-shell {
+  min-height: 100vh;
+  background: #202020;
+}
+
+/* Top Header */
+.top-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 32px;
+  background: #555;
+}
+
+/* Main nav */
+.main-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+  max-width: 520px;
+}
+
+/* Primary header buttons */
+.nav-button {
+  width: 100%;
+  border: 0;
+  border-radius: 22px;
+  padding: 12px 20px;
+  background: transparent;
+  color: #f2f2f2;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* Active tab indicator */ 
+.nav-button.active {
+  background: #111;
+}
+
+/* Small Action button */
+.corner-action-button {
+  border: 0;
+  border-radius: 18px;
+  padding: 8px 14px;
+  background: transparent;
+  color: #f2f2f2;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.corner-action-button:hover {
+  background: #333;
+}
+
+/*
+  Main calendar layout:
+  - left: provider legend
+  - middle: weekly calendar
+  - right: eligible waitlist panel
+*/
+.calendar-page {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 350px;
+  gap: 28px;
+  padding: 24px;
+  width: 100%;
+}
+
+/* Panel styleing */
+.legend-panel,
+.eligible-panel,
+.action-page,
+.waitlist-page {
+  background: #565656;
+  padding: 22px;
+}
+
+.legend-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 650px;
+}
+
+/* Removes extra top margin from panel headings */
+.legend-panel h2,
+.eligible-panel h2,
+.eligible-panel h3 {
+  margin-top: 0;
+}
+
+/* Provider legend list */
+.provider-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.provider-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 700;
+}
+
+.provider-color {
+  width: 22px;
+  height: 28px;
+  display: inline-block;
+}
+
+/* Secondary text-style button */
+.secondary-button {
+  margin-top: auto;
+  border: 0;
+  background: transparent;
+  color: #f2f2f2;
+  text-align: left;
+  text-decoration: underline;
+}
+
+/* Calendar panel should use the full center column width */
+.calendar-panel {
+  min-width: 0;
+  width: 100%;
+}
+
+/*
+  Week header:
+  - left arrow
+  - centered week label
+  - right arrow
+*/
+.week-controls {
+  display: grid;
+  grid-template-columns: 60px 1fr 60px;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+/* Week title */
+.week-controls h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 18px;
+}
+
+.arrow-button {
+  border: 0;
+  background: transparent;
+  color: #f2f2f2;
+  font-size: 54px;
+  line-height: 1;
+}
+
+/* Five-column weekly calendar grid */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  width: 100%;
+  min-height: 650px;
+  border-left: 1px solid #333;
+  border-top: 1px solid #333;
+  background: #242424;
+}
+
+/* Individual day column */
+.day-column {
+  min-width: 0;
+  border-right: 1px solid #333;
+}
+
+/* Day label */
+.day-header {
+  height: 54px;
+  padding: 8px;
+  border-bottom: 1px solid #333;
+  color: #ddd;
+  font-size: 12px;
+}
+
+/* Keeps weekday and date on separate lines */
+.day-header span,
+.day-header strong {
+  display: block;
+}
+
+/* Body of a single calendar day */
+.day-body {
+  position: relative;
+  height: 596px;
+}
+
+/* Time grid row  */
+.time-row {
+  height: 10%;
+  border-bottom: 1px solid #333;
+  color: #777;
+  font-size: 11px;
+  padding: 4px;
+}
+
+/* Colored provider opening block */
+.opening-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #111;
+  font-weight: 700;
+  opacity: 0.62;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  line-height: 1.4;
+}
+
+
+.opening-block:hover,
+.opening-block.selected {
+  opacity: 0.95;
+  outline: 3px solid #fff;
+  z-index: 2;
+}
+
+/* Right panel */ 
+.eligible-panel {
+  min-height: 650px;
+}
+
+.selected-opening-header {
+  border-bottom: 1px solid #777;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+}
+
+.selected-opening-header p {
+  margin: 6px 0;
+}
+
+.empty-message {
+  color: #ddd;
+  line-height: 1.5;
+}
+
+/* Eligible list */
+.eligible-list {
+  display: grid;
+  gap: 12px;
+}
+
+.eligible-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: #333;
+  border: 1px solid #777;
+}
+
+.eligible-card h4 {
+  margin: 0 0 8px;
+}
+
+.eligible-card p {
+  margin: 4px 0;
+  color: #ddd;
+}
+
+.eligible-card button {
+  justify-self: start;
+  border: 0;
+  padding: 8px 12px;
+  background: #f2f2f2;
+  color: #111;
+  font-weight: 700;
+}
+
+/* Full page panel */
+.waitlist-page,
+.action-page {
+  margin: 24px;
+  min-height: 650px;
+  width: calc(100% - 48px);
+}
+
+/* Header row for the waitlist page */
+.page-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+/* Removes default heading margin where needed */
+.page-header-row h1,
+.action-page h1 {
+  margin: 0;
+}
+
+/* Sort buttons inside table headers */
+.table-sort-button {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* Waitlist table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #f8f8f8;
+  color: #222;
+}
+
+/* Table cell styling */
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #e6e6e6;
+}
+
+/* Table action buttons */
+td button {
+  margin-right: 8px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+}
+
+/* Opening list */
+.opening-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  max-width: 500px;
+}
+
+/* Opening summary */
+.opening-list-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 14px;
+  background: #333;
+  border: 1px solid #777;
+}
+
+@media (max-width: 1100px) {
+  .calendar-page {
+    grid-template-columns: 1fr;
+  }
+
+  .legend-panel,
+  .eligible-panel {
+    min-height: auto;
+  }
+}
