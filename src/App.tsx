@@ -1,23 +1,8 @@
-import { useMemo, useState } from "react";
-import "./App.css";
-
-/*
-  Appointment Management System frontend.
-
-  Current scope:
-  - Frontend only.
-  - No database yet.
-  - Waitlist entries and provider openings are stored in React state.
-  - Calendar view shows provider openings.
-  - Clicking an opening shows eligible waitlist entries on the right.
-  - Scheduling from an opening removes that opening.
-  - Waitlist view shows sortable waitlisted patients.
-  - Corner action button changes based on the active page.
-*/
+import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 
 type WaitlistStatus = "WAITLISTED" | "SCHEDULED" | "REMOVED";
 type DayCode = "M" | "Tu" | "W" | "Th" | "F";
-type ViewMode = "CALENDAR" | "WAITLIST" | "ACTION";
+type ViewMode = "CALENDAR" | "WAITLIST";
 type ActionMode = "OPENING" | "WAITLIST_ENTRY" | "EDIT_PROVIDERS";
 type SortField = "dateAdded" | "name" | "provider" | "tier" | "status";
 
@@ -61,23 +46,10 @@ type OpeningSegment = {
   isLastPiece: boolean;
 };
 
-// Tracks editable providers shown in the legend
-const [providers, setProviders] = useState<Provider[]>([
-  { name: "Provider A", color: "#5877ff" },
-  { name: "Provider B", color: "#c9a227" },
-]);
+type EditingOpening = Opening & { _original?: Opening };
+type EditingEntry = WaitlistEntry;
+type EditingProvider = Provider & { _originalName?: string };
 
-// Tracks the provider editor form
-const [providerName, setProviderName] = useState("");
-const [providerColor, setProviderColor] = useState("#5877ff");
-
-// Tracks the opening form
-const [openingProvider, setOpeningProvider] = useState("Provider A");
-const [openingDate, setOpeningDate] = useState("2026-05-29");
-const [openingStartTime, setOpeningStartTime] = useState("9:00");
-const [openingEndTime, setOpeningEndTime] = useState("10:00");
-
-// Calendar days shown in the work week
 const dayLabels: { code: DayCode; label: string }[] = [
   { code: "M", label: "Mon" },
   { code: "Tu", label: "Tue" },
@@ -86,143 +58,153 @@ const dayLabels: { code: DayCode; label: string }[] = [
   { code: "F", label: "Fri" },
 ];
 
-// Visible calendar time rows
-const timeSlots = [
-  "8:00",
-  "9:00",
-  "10:00",
-  "11:00",
-  "12:00",
-  "1:00",
-  "2:00",
-  "3:00",
-  "4:00",
-  "5:00",
-];
+const timeSlots = ["8:00","9:00","10:00","11:00","12:00","1:00","2:00","3:00","4:00","5:00"];
+const ALL_TIME_OPTIONS = ["8:00","9:00","10:00","11:00","12:00","1:00","2:00","3:00","4:00","5:00","6:00"];
+
+// Calendar spans 8:00 to 18:00 (10 hours)
+const CAL_START_MIN = 8 * 60;   // 480
+const CAL_END_MIN   = 18 * 60;  // 1080
+const CAL_SPAN      = CAL_END_MIN - CAL_START_MIN; // 600 min
+
+// Snap to 15-minute intervals
+const SNAP = 15;
+
+function snapToInterval(minutes: number, interval: number) {
+  return Math.round(minutes / interval) * interval;
+}
 
 function App() {
-  // Tracks which main page is visible
   const [activeView, setActiveView] = useState<ViewMode>("CALENDAR");
-
-  // Tracks which action page mode is active
   const [actionMode, setActionMode] = useState<ActionMode>("OPENING");
+  const [isActionPageOpen, setIsActionPageOpen] = useState(false);
+  const [calendarLocked, setCalendarLocked] = useState(false);
 
-  // Tracks the Monday date for the visible week
-  const [weekStartDate, setWeekStartDate] = useState<string>("2026-05-25");
+  // Edit modals
+  const [editingOpening, setEditingOpening] = useState<EditingOpening | null>(null);
+  const [editingEntry, setEditingEntry]     = useState<EditingEntry | null>(null);
+  const [editingProvider, setEditingProvider] = useState<EditingProvider | null>(null);
 
-  // Tracks the selected opening on the calendar
+  const [providers, setProviders] = useState<Provider[]>([
+    { name: "Provider A", color: "#5877ff" },
+    { name: "Provider B", color: "#c9a227" },
+  ]);
+
+  const [providerName, setProviderName]   = useState("");
+  const [providerColor, setProviderColor] = useState("#5877ff");
+
+  const [openingProvider, setOpeningProvider]   = useState("Provider A");
+  const [openingDate, setOpeningDate]           = useState("2026-05-29");
+  const [openingStartTime, setOpeningStartTime] = useState("9:00");
+  const [openingEndTime, setOpeningEndTime]     = useState("10:00");
+
+  const [waitlistDateAdded, setWaitlistDateAdded]           = useState(toDateInputValue(new Date()));
+  const [waitlistFirstName, setWaitlistFirstName]           = useState("");
+  const [waitlistLastName, setWaitlistLastName]             = useState("");
+  const [waitlistProvider, setWaitlistProvider]             = useState("Provider A");
+  const [waitlistTier, setWaitlistTier]                     = useState<1 | 2 | 3>(1);
+  const [waitlistReason, setWaitlistReason]                 = useState(getTierReason(1));
+  const [waitlistAvailableDays, setWaitlistAvailableDays]   = useState<DayCode[]>([]);
+  const [waitlistAvailableTimesText, setWaitlistAvailableTimesText] = useState("");
+
+  const [weekStartDate, setWeekStartDate]     = useState<string>("2026-05-25");
   const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(1);
+  const [hoveredOpeningId, setHoveredOpeningId]   = useState<number | null>(null);
 
-  // Tracks which opening is being hovered across visual segments
-  const [hoveredOpeningId, setHoveredOpeningId] = useState<number | null>(null);
-
-  // Tracks the active waitlist sort field
-  const [sortField, setSortField] = useState<SortField>("dateAdded");
-
-  // Tracks the active waitlist sort direction
+  const [sortField, setSortField]         = useState<SortField>("dateAdded");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
-  // Temporary waitlist entries until database support is added
   const [entries, setEntries] = useState<WaitlistEntry[]>([
-    {
-      id: 1,
-      dateAdded: "2026-05-22",
-      firstName: "John",
-      lastName: "Smith",
-      provider: "Provider A",
-      tier: 1,
-      reason: getTierReason(1),
-      availableDays: [],
-      availableTimes: [],
-      status: "WAITLISTED",
-    },
-    {
-      id: 2,
-      dateAdded: "2026-05-20",
-      firstName: "Mary",
-      lastName: "Adams",
-      provider: "Provider A",
-      tier: 2,
-      reason: getTierReason(2),
-      availableDays: ["Tu", "Th"],
-      availableTimes: ["9:00-12:00", "2:00-5:00"],
-      status: "WAITLISTED",
-    },
-    {
-      id: 3,
-      dateAdded: "2026-05-18",
-      firstName: "Alex",
-      lastName: "Rivera",
-      provider: "Provider B",
-      tier: 1,
-      reason: getTierReason(1),
-      availableDays: [],
-      availableTimes: [],
-      status: "WAITLISTED",
-    },
-    {
-      id: 4,
-      dateAdded: "2026-05-16",
-      firstName: "Sarah",
-      lastName: "Miller",
-      provider: "Provider B",
-      tier: 3,
-      reason: getTierReason(3),
-      availableDays: ["Th", "F"],
-      availableTimes: ["1:00-4:00"],
-      status: "WAITLISTED",
-    },
-    {
-      id: 5,
-      dateAdded: "2026-05-15",
-      firstName: "Daniel",
-      lastName: "Clark",
-      provider: "Provider A",
-      tier: 1,
-      reason: getTierReason(1),
-      availableDays: [],
-      availableTimes: [],
-      status: "WAITLISTED",
-    },
+    { id: 1, dateAdded: "2026-05-22", firstName: "John",   lastName: "Smith",  provider: "Provider A", tier: 1, reason: getTierReason(1), availableDays: [],           availableTimes: [],            status: "WAITLISTED" },
+    { id: 2, dateAdded: "2026-05-20", firstName: "Mary",   lastName: "Adams",  provider: "Provider A", tier: 2, reason: getTierReason(2), availableDays: ["Tu","Th"],   availableTimes: ["9:00-12:00","2:00-5:00"], status: "WAITLISTED" },
+    { id: 3, dateAdded: "2026-05-18", firstName: "Alex",   lastName: "Rivera", provider: "Provider B", tier: 1, reason: getTierReason(1), availableDays: [],           availableTimes: [],            status: "WAITLISTED" },
+    { id: 4, dateAdded: "2026-05-16", firstName: "Sarah",  lastName: "Miller", provider: "Provider B", tier: 3, reason: getTierReason(3), availableDays: ["Th","F"],   availableTimes: ["1:00-4:00"], status: "WAITLISTED" },
+    { id: 5, dateAdded: "2026-05-15", firstName: "Daniel", lastName: "Clark",  provider: "Provider A", tier: 1, reason: getTierReason(1), availableDays: [],           availableTimes: [],            status: "WAITLISTED" },
   ]);
 
-  // Temporary opening entries until database support is added
   const [openings, setOpenings] = useState<Opening[]>([
-    {
-      id: 1,
-      provider: "Provider A",
-      date: "2026-05-26",
-      day: "Tu",
-      startTime: "9:00",
-      endTime: "1:00",
-    },
-    {
-      id: 2,
-      provider: "Provider B",
-      date: "2026-05-28",
-      day: "Th",
-      startTime: "8:00",
-      endTime: "10:00",
-    },
-    {
-      id: 3,
-      provider: "Provider B",
-      date: "2026-05-28",
-      day: "Th",
-      startTime: "1:00",
-      endTime: "4:00",
-    },
-    {
-      id: 4,
-      provider: "Provider A",
-      date: "2026-05-28",
-      day: "Th",
-      startTime: "9:00",
-      endTime: "11:00",
-    },
+    { id: 1, provider: "Provider A", date: "2026-05-26", day: "Tu", startTime: "9:00",  endTime: "1:00"  },
+    { id: 2, provider: "Provider B", date: "2026-05-28", day: "Th", startTime: "8:00",  endTime: "10:00" },
+    { id: 3, provider: "Provider B", date: "2026-05-28", day: "Th", startTime: "1:00",  endTime: "4:00"  },
+    { id: 4, provider: "Provider A", date: "2026-05-28", day: "Th", startTime: "9:00",  endTime: "11:00" },
   ]);
 
-  // Builds the five visible calendar dates from the selected week start
+  // ── Drag state ──────────────────────────────────────────────────────
+  type DragState = {
+    openingId: number;
+    mode: "move" | "resize-top" | "resize-bottom";
+    startY: number;
+    origStartMin: number;
+    origEndMin: number;
+    colHeightPx: number;
+  };
+  const dragRef = useRef<DragState | null>(null);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+
+  // Pointer move handler (attached to window)
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    e.preventDefault();
+    const dyPx   = e.clientY - d.startY;
+    const dyMin  = (dyPx / d.colHeightPx) * CAL_SPAN;
+    const minDur = 30;
+
+    setOpenings(prev => prev.map(o => {
+      if (o.id !== d.openingId) return o;
+      let newStart = d.origStartMin;
+      let newEnd   = d.origEndMin;
+
+      if (d.mode === "move") {
+        const dur = d.origEndMin - d.origStartMin;
+        newStart  = snapToInterval(d.origStartMin + dyMin, SNAP);
+        newEnd    = newStart + dur;
+        if (newStart < CAL_START_MIN) { newStart = CAL_START_MIN; newEnd = newStart + dur; }
+        if (newEnd   > CAL_END_MIN)   { newEnd   = CAL_END_MIN;   newStart = newEnd - dur; }
+      } else if (d.mode === "resize-top") {
+        newStart = snapToInterval(d.origStartMin + dyMin, SNAP);
+        newStart = Math.max(CAL_START_MIN, Math.min(newStart, d.origEndMin - minDur));
+      } else {
+        newEnd = snapToInterval(d.origEndMin + dyMin, SNAP);
+        newEnd = Math.min(CAL_END_MIN, Math.max(newEnd, d.origStartMin + minDur));
+      }
+
+      return {
+        ...o,
+        startTime: minutesToTimeString(newStart),
+        endTime:   minutesToTimeString(newEnd),
+      };
+    }));
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null;
+    setDraggingId(null);
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup",   handlePointerUp);
+  }, [handlePointerMove]);
+
+  function startDrag(
+    e: React.PointerEvent,
+    opening: Opening,
+    mode: DragState["mode"],
+    colHeightPx: number,
+  ) {
+    if (calendarLocked) return;
+    e.stopPropagation();
+    dragRef.current = {
+      openingId:    opening.id,
+      mode,
+      startY:       e.clientY,
+      origStartMin: timeToMinutes(opening.startTime),
+      origEndMin:   timeToMinutes(opening.endTime),
+      colHeightPx,
+    };
+    setDraggingId(opening.id);
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup",   handlePointerUp);
+  }
+
+  // ── Week navigation ───────────────────────────────────────────────
   const weekDates = useMemo(() => {
     const start = parseLocalDate(weekStartDate);
     return dayLabels.map((day, index) => {
@@ -232,204 +214,242 @@ function App() {
     });
   }, [weekStartDate]);
 
-  // Finds the currently selected opening object
-  const selectedOpening = openings.find((o) => o.id === selectedOpeningId) ?? null;
+  const selectedOpening = openings.find(o => o.id === selectedOpeningId) ?? null;
 
-  // Finds waitlisted people who match the selected opening
   const eligibleEntries = useMemo(() => {
     if (!selectedOpening) return [];
     return entries
-      .filter((e) => e.status === "WAITLISTED")
-      .filter((e) => e.provider === selectedOpening.provider)
-      .filter((e) => isEntryAvailableForOpening(e, selectedOpening))
+      .filter(e => e.status === "WAITLISTED")
+      .filter(e => e.provider === selectedOpening.provider)
+      .filter(e => isEntryAvailableForOpening(e, selectedOpening))
       .sort((a, b) => {
         if (a.tier !== b.tier) return a.tier - b.tier;
         return new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime();
       });
   }, [entries, selectedOpening]);
 
-  // Builds the sorted waitlist table
   const sortedWaitlistEntries = useMemo(() => {
-    const waitlistedOnly = entries.filter((e) => e.status === "WAITLISTED");
+    const waitlistedOnly = entries.filter(e => e.status === "WAITLISTED");
     return [...waitlistedOnly].sort((a, b) => {
       const dir = sortDirection === "asc" ? 1 : -1;
-      if (sortField === "dateAdded") {
-        return (new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime()) * dir;
-      }
-      if (sortField === "name") {
-        return getFullName(a).localeCompare(getFullName(b)) * dir;
-      }
-      if (sortField === "provider") {
-        return a.provider.localeCompare(b.provider) * dir;
-      }
-      if (sortField === "tier") {
-        return (a.tier - b.tier) * dir;
-      }
+      if (sortField === "dateAdded") return (new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime()) * dir;
+      if (sortField === "name")      return getFullName(a).localeCompare(getFullName(b)) * dir;
+      if (sortField === "provider")  return a.provider.localeCompare(b.provider) * dir;
+      if (sortField === "tier")      return (a.tier - b.tier) * dir;
       return a.status.localeCompare(b.status) * dir;
     });
   }, [entries, sortField, sortDirection]);
 
-  // Moves the calendar back one week
-  function goToPreviousWeek() {
-    setWeekStartDate((d) => moveDateByDays(d, -7));
-    setSelectedOpeningId(null);
-  }
+  // ── Mutations ────────────────────────────────────────────────────
+  function goToPreviousWeek() { setWeekStartDate(d => moveDateByDays(d, -7)); setSelectedOpeningId(null); }
+  function goToNextWeek()     { setWeekStartDate(d => moveDateByDays(d,  7)); setSelectedOpeningId(null); }
 
-  // Moves the calendar forward one week
-  function goToNextWeek() {
-    setWeekStartDate((d) => moveDateByDays(d, 7));
-    setSelectedOpeningId(null);
-  }
-
-  // Marks an entry as scheduled without changing openings
   function markScheduled(id: number) {
-    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, status: "SCHEDULED" } : e)));
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, status: "SCHEDULED" } : e));
   }
 
-  // Schedules a waitlist entry and removes the selected opening
   function scheduleEntryForSelectedOpening(entryId: number) {
     if (selectedOpeningId === null) return;
-    setEntries((prev) =>
-      prev.map((e) => (e.id === entryId ? { ...e, status: "SCHEDULED" } : e))
-    );
-    setOpenings((prev) => prev.filter((o) => o.id !== selectedOpeningId));
+    setEntries(prev => prev.map(e => e.id === entryId ? { ...e, status: "SCHEDULED" } : e));
+    setOpenings(prev => prev.filter(o => o.id !== selectedOpeningId));
     setSelectedOpeningId(null);
   }
 
-  // Marks an entry as removed without deleting its record
   function removeEntry(id: number) {
-    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, status: "REMOVED" } : e)));
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, status: "REMOVED" } : e));
   }
 
-  // Removes an opening from the calendar
   function removeOpening(id: number) {
-    setOpenings((prev) => prev.filter((o) => o.id !== id));
-    if (selectedOpeningId === id) {
-      setSelectedOpeningId(null);
+    setOpenings(prev => prev.filter(o => o.id !== id));
+    if (selectedOpeningId === id) setSelectedOpeningId(null);
+  }
+
+  function addProvider() {
+    const cleanName = providerName.trim();
+    if (!cleanName) return;
+    if (providers.some(p => p.name.toLowerCase() === cleanName.toLowerCase())) return;
+    setProviders(prev => [...prev, { name: cleanName, color: providerColor }]);
+    setProviderName("");
+    setProviderColor("#5877ff");
+  }
+
+  function removeProvider(name: string) {
+    setProviders(prev => prev.filter(p => p.name !== name));
+    setOpenings(prev => prev.filter(o => o.provider !== name));
+    if (openingProvider === name) {
+      const fallback = providers.find(p => p.name !== name)?.name ?? "";
+      setOpeningProvider(fallback);
     }
   }
 
-  // Opens the provider editor from the legend column
-function openEditProvidersPage() {
-  setActionMode("EDIT_PROVIDERS");
-  setActiveView("ACTION");
-}
-
-// Adds a provider to the legend
-function addProvider() {
-  const cleanName = providerName.trim();
-
-  if (!cleanName) return;
-  if (providers.some((p) => p.name.toLowerCase() === cleanName.toLowerCase())) return;
-
-  setProviders((prev) => [...prev, { name: cleanName, color: providerColor }]);
-  setProviderName("");
-  setProviderColor("#5877ff");
-}
-
-// Removes a provider and that provider's openings
-function removeProvider(name: string) {
-  setProviders((prev) => prev.filter((p) => p.name !== name));
-  setOpenings((prev) => prev.filter((o) => o.provider !== name));
-
-  if (openingProvider === name) {
-    const fallback = providers.find((p) => p.name !== name)?.name ?? "";
-    setOpeningProvider(fallback);
+  function addOpening() {
+    if (!openingProvider || !openingDate || !openingStartTime || !openingEndTime) return;
+    if (timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)) return;
+    const nextOpening: Opening = {
+      id:        getNextId(openings),
+      provider:  openingProvider,
+      date:      openingDate,
+      day:       getDayCodeFromDate(openingDate),
+      startTime: openingStartTime,
+      endTime:   openingEndTime,
+    };
+    setOpenings(prev => [...prev, nextOpening]);
   }
-}
 
-// Adds an opening to the calendar
-function addOpening() {
-  if (!openingProvider || !openingDate || !openingStartTime || !openingEndTime) return;
-  if (timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)) return;
+  function toggleWaitlistAvailableDay(day: DayCode) {
+    setWaitlistAvailableDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  }
 
-  const nextOpening: Opening = {
-    id: getNextId(openings),
-    provider: openingProvider,
-    date: openingDate,
-    day: getDayCodeFromDate(openingDate),
-    startTime: openingStartTime,
-    endTime: openingEndTime,
-  };
+  function addWaitlistEntry() {
+    const firstName = waitlistFirstName.trim();
+    const lastName  = waitlistLastName.trim();
+    const reason    = waitlistReason.trim();
+    const availableTimes = waitlistAvailableTimesText.split(",").map(t => t.trim()).filter(Boolean);
+    if (!waitlistDateAdded || !firstName || !lastName || !waitlistProvider || !reason) return;
+    const nextEntry: WaitlistEntry = {
+      id:            getNextId(entries),
+      dateAdded:     waitlistDateAdded,
+      firstName,
+      lastName,
+      provider:      waitlistProvider,
+      tier:          waitlistTier,
+      reason,
+      availableDays: waitlistAvailableDays,
+      availableTimes,
+      status:        "WAITLISTED",
+    };
+    setEntries(prev => [...prev, nextEntry]);
+    setWaitlistFirstName("");
+    setWaitlistLastName("");
+    setWaitlistTier(1);
+    setWaitlistReason(getTierReason(1));
+    setWaitlistAvailableDays([]);
+    setWaitlistAvailableTimesText("");
+    setActiveView("WAITLIST");
+    setIsActionPageOpen(false);
+  }
 
-  setOpenings((prev) => [...prev, nextOpening]);
-}
-
-  // Toggles sort direction when clicking the same column
   function handleSortChange(next: SortField) {
-    if (next === sortField) {
-      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
-      return;
-    }
+    if (next === sortField) { setSortDirection(d => d === "asc" ? "desc" : "asc"); return; }
     setSortField(next);
     setSortDirection("asc");
   }
 
-  // Opens the action page in the correct mode
   function openActionPage() {
     setActionMode(activeView === "WAITLIST" ? "WAITLIST_ENTRY" : "OPENING");
-    setActiveView("ACTION");
+    setIsActionPageOpen(true);
   }
+
+  // ── Edit opening save ─────────────────────────────────────────────
+  function saveEditingOpening() {
+    if (!editingOpening) return;
+    if (timeToMinutes(editingOpening.endTime) <= timeToMinutes(editingOpening.startTime)) return;
+    setOpenings(prev => prev.map(o => o.id === editingOpening.id ? {
+      ...editingOpening,
+      day: getDayCodeFromDate(editingOpening.date),
+    } : o));
+    setEditingOpening(null);
+  }
+
+  // ── Edit entry save ───────────────────────────────────────────────
+  function saveEditingEntry() {
+    if (!editingEntry) return;
+    setEntries(prev => prev.map(e => e.id === editingEntry.id ? editingEntry : e));
+    setEditingEntry(null);
+  }
+
+  // ── Edit provider save ────────────────────────────────────────────
+  function saveEditingProvider() {
+    if (!editingProvider) return;
+    const oldName = editingProvider._originalName ?? editingProvider.name;
+    const newName = editingProvider.name.trim();
+    if (!newName) return;
+    setProviders(prev => prev.map(p => p.name === oldName ? { name: newName, color: editingProvider.color } : p));
+    // Update references in openings and entries
+    if (oldName !== newName) {
+      setOpenings(prev => prev.map(o => o.provider === oldName ? { ...o, provider: newName } : o));
+      setEntries(prev => prev.map(e => e.provider === oldName ? { ...e, provider: newName } : e));
+    }
+    setEditingProvider(null);
+  }
+
+  const openingDurationLabel = (() => {
+    const diff = (timeToMinutes(openingEndTime) - timeToMinutes(openingStartTime)) / 60;
+    if (diff <= 0) return "—";
+    if (diff === 1) return "1 hr";
+    if (diff % 1 === 0) return `${diff} hrs`;
+    return `${diff.toFixed(1)} hrs`;
+  })();
+
+  const waitlistInitials = (waitlistFirstName[0] ?? "") + (waitlistLastName[0] ?? "");
+
+  const cornerActionLabel = activeView === "WAITLIST" ? "+ Add to Waitlist" : "+ Add Opening";
+
+  // Ref for day body height measurement
+  const dayBodyRef = useRef<HTMLDivElement>(null);
 
   return (
     <main className="app-shell">
       <header className="top-bar">
         <nav className="main-nav">
-          <button
-            className={activeView === "CALENDAR" ? "nav-button active" : "nav-button"}
-            onClick={() => setActiveView("CALENDAR")}
-          >
+          <button className={activeView === "CALENDAR" ? "nav-button active" : "nav-button"}
+            onClick={() => { setActiveView("CALENDAR"); setIsActionPageOpen(false); }}>
             Calendar
           </button>
-
-          <button
-            className={activeView === "WAITLIST" ? "nav-button active" : "nav-button"}
-            onClick={() => setActiveView("WAITLIST")}
-          >
+          <button className={activeView === "WAITLIST" ? "nav-button active" : "nav-button"}
+            onClick={() => { setActiveView("WAITLIST"); setIsActionPageOpen(false); }}>
             Waitlist
           </button>
         </nav>
-
-        <button className="corner-action-button" onClick={openActionPage}>
-          {activeView === "WAITLIST" ? "+ Add to Waitlist" : "+ Add Opening"}
-        </button>
+        <button className="corner-action-button" onClick={openActionPage}>{cornerActionLabel}</button>
       </header>
 
-      {activeView === "CALENDAR" && (
+      {/* ── CALENDAR VIEW ─────────────────────────────────────── */}
+      {!isActionPageOpen && activeView === "CALENDAR" && (
         <section className="calendar-page">
-        <aside className="legend-panel">
-          <h2>Legend</h2>
+          <aside className="legend-panel">
+            <h2>Legend</h2>
+            <div className="provider-list">
+              {providers.map(p => (
+                <div className="provider-key" key={p.name}>
+                  <span>{p.name}</span>
+                  <span className="provider-color" style={{ backgroundColor: p.color }} />
+                </div>
+              ))}
+            </div>
 
-          <div className="provider-list">
-            {providers.map((p) => (
-              <div className="provider-key" key={p.name}>
-                <span>{p.name}</span>
-                <span className="provider-color" style={{ backgroundColor: p.color }} />
-              </div>
-            ))}
-          </div>
+            {/* Lock toggle */}
+            <div className="lock-section">
+              <button
+                className={`lock-button ${calendarLocked ? "locked" : "unlocked"}`}
+                onClick={() => setCalendarLocked(l => !l)}
+                title={calendarLocked ? "Unlock to drag openings" : "Lock to prevent accidental moves"}
+              >
+                <span className="lock-icon">{calendarLocked ? "🔒" : "🔓"}</span>
+                <span className="lock-label">{calendarLocked ? "Locked" : "Unlocked"}</span>
+              </button>
+              {!calendarLocked && (
+                <p className="lock-hint">Drag openings to move or resize</p>
+              )}
+            </div>
 
-          <button className="secondary-button" onClick={openEditProvidersPage}>
-            Edit Providers
-          </button>
-        </aside>
+            <button className="secondary-button" onClick={() => { setActionMode("EDIT_PROVIDERS"); setIsActionPageOpen(true); }}>
+              Edit Providers
+            </button>
+          </aside>
 
           <section className="calendar-panel">
             <div className="week-controls">
-              <button className="arrow-button" onClick={goToPreviousWeek}>
-                ←
-              </button>
-
+              <button className="arrow-button" onClick={goToPreviousWeek}>←</button>
               <h1>Week of {formatDisplayDate(weekStartDate)}</h1>
-
-              <button className="arrow-button" onClick={goToNextWeek}>
-                →
-              </button>
+              <button className="arrow-button" onClick={goToNextWeek}>→</button>
             </div>
 
             <div className="calendar-grid">
-              {weekDates.map((day) => {
-                const dayOpenings = openings.filter((o) => o.date === day.dateString);
+              {weekDates.map(day => {
+                const dayOpenings   = openings.filter(o => o.date === day.dateString);
                 const openingSegments = buildOpeningSegments(dayOpenings);
 
                 return (
@@ -439,49 +459,100 @@ function addOpening() {
                       <strong>{day.date.getDate()}</strong>
                     </div>
 
-                    <div className="day-body">
-                      {timeSlots.map((time) => (
-                        <div className="time-row" key={time}>
-                          <span>{time}</span>
-                        </div>
+                    <div className="day-body" ref={dayBodyRef}>
+                      {timeSlots.map(time => (
+                        <div className="time-row" key={time}><span>{time}</span></div>
                       ))}
 
-                      {openingSegments.map((segment) => {
-                        const color =
-                          providers.find((p) => p.name === segment.opening.provider)?.color ??
-                          "#999";
+                      {openingSegments.map(segment => {
+                        const color = providers.find(p => p.name === segment.opening.provider)?.color ?? "#999";
+                        const isDragging = draggingId === segment.opening.id;
+                        const opening    = openings.find(o => o.id === segment.opening.id) ?? segment.opening;
+
+                        // Recalculate position based on live opening state during drag
+                        const liveTop    = getOpeningTopPct(opening.startTime);
+                        const liveHeight = getOpeningHeightPct(opening.startTime, opening.endTime);
 
                         return (
-                          <button
-                            key={`${segment.opening.id}-${segment.startTime}-${segment.endTime}-${segment.index}`}
+                          <div
+                            key={`${segment.opening.id}-${segment.startTime}-${segment.index}`}
                             className={[
                               "opening-block",
                               selectedOpeningId === segment.opening.id ? "selected" : "",
-                              hoveredOpeningId === segment.opening.id ? "opening-hovered" : "",
+                              hoveredOpeningId  === segment.opening.id ? "opening-hovered" : "",
                               segment.isFirstPiece ? "first-piece" : "",
-                              segment.isLastPiece ? "last-piece" : "",
+                              segment.isLastPiece  ? "last-piece"  : "",
+                              isDragging ? "is-dragging" : "",
+                              calendarLocked ? "is-locked" : "is-draggable",
                             ].join(" ")}
                             style={{
                               backgroundColor: color,
-                              top: `${getOpeningTop(segment.startTime)}%`,
-                              height: `${getOpeningHeight(segment.startTime, segment.endTime)}%`,
-                              left: segment.left,
-                              width: segment.width,
-                              right: "auto",
+                              top:    isDragging ? `${liveTop}%`    : `${getOpeningTopPct(segment.startTime)}%`,
+                              height: isDragging ? `${liveHeight}%` : `${getOpeningHeightPct(segment.startTime, segment.endTime)}%`,
+                              left:   segment.left,
+                              width:  segment.width,
+                              right:  "auto",
                             }}
-                            onClick={() => setSelectedOpeningId(segment.opening.id)}
+                            onClick={() => {
+                              if (!isDragging) setSelectedOpeningId(segment.opening.id);
+                            }}
                             onMouseEnter={() => setHoveredOpeningId(segment.opening.id)}
                             onMouseLeave={() => setHoveredOpeningId(null)}
                           >
-                            {segment.showLabel && (
-                              <>
-                                <span>{segment.opening.provider}</span>
-                                <span>
-                                  {formatTime(segment.opening.startTime)}–{formatTime(segment.opening.endTime)}
-                                </span>
-                              </>
+                            {/* Top resize handle */}
+                            {!calendarLocked && segment.isFirstPiece && (
+                              <div
+                                className="resize-handle resize-top"
+                                onPointerDown={e => {
+                                  const col = e.currentTarget.closest(".day-body") as HTMLElement;
+                                  startDrag(e, opening, "resize-top", col?.getBoundingClientRect().height ?? 600);
+                                }}
+                              />
                             )}
-                          </button>
+
+                            {/* Move handle / label area */}
+                            <div
+                              className="opening-move-area"
+                              onPointerDown={e => {
+                                const col = e.currentTarget.closest(".day-body") as HTMLElement;
+                                startDrag(e, opening, "move", col?.getBoundingClientRect().height ?? 600);
+                              }}
+                            >
+                              {segment.showLabel && (
+                                <>
+                                  <span className="opening-label-provider">{opening.provider}</span>
+                                  <span className="opening-label-time">
+                                    {opening.startTime}–{opening.endTime}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Edit button (visible on hover) */}
+                            {segment.showLabel && (
+                              <button
+                                className="opening-edit-btn"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setEditingOpening({ ...opening, _original: opening });
+                                }}
+                                title="Edit opening"
+                              >
+                                ✎
+                              </button>
+                            )}
+
+                            {/* Bottom resize handle */}
+                            {!calendarLocked && segment.isLastPiece && (
+                              <div
+                                className="resize-handle resize-bottom"
+                                onPointerDown={e => {
+                                  const col = e.currentTarget.closest(".day-body") as HTMLElement;
+                                  startDrag(e, opening, "resize-bottom", col?.getBoundingClientRect().height ?? 600);
+                                }}
+                              />
+                            )}
+                          </div>
                         );
                       })}
                     </div>
@@ -490,46 +561,45 @@ function addOpening() {
               })}
             </div>
           </section>
+
           <aside className="eligible-panel">
             {selectedOpening ? (
               <>
                 <div className="selected-opening-header">
                   <h2>{selectedOpening.provider}</h2>
-                  <p>
-                    {selectedOpening.day} · {formatDisplayDate(selectedOpening.date)}
-                  </p>
-                  <p>
-                    {formatTime(selectedOpening.startTime)}–{formatTime(selectedOpening.endTime)}
-                  </p>
-
-                  <button
-                    className="remove-opening-button"
-                    onClick={() => removeOpening(selectedOpening.id)}
-                  >
-                    Remove Opening
-                  </button>
+                  <p>{selectedOpening.day} · {formatDisplayDate(selectedOpening.date)}</p>
+                  <p>{selectedOpening.startTime}–{selectedOpening.endTime}</p>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button className="edit-opening-btn-small"
+                      onClick={() => setEditingOpening({ ...selectedOpening, _original: selectedOpening })}>
+                      Edit
+                    </button>
+                    <button className="remove-opening-button" onClick={() => removeOpening(selectedOpening.id)}>
+                      Remove
+                    </button>
+                  </div>
                 </div>
                 <h3>Eligible Waitlist</h3>
                 {eligibleEntries.length === 0 ? (
                   <p className="empty-message">No eligible waitlist entries for this opening.</p>
                 ) : (
                   <div className="eligible-list">
-                    {eligibleEntries.map((entry) => (
+                    {eligibleEntries.map(entry => (
                       <article className="eligible-card" key={entry.id}>
-                        <div>
-                          <h4>{getFullName(entry)}</h4>
-                          <span className={`tier-badge tier-${entry.tier}`}>
-                            Tier {entry.tier}
-                          </span>
-                          <p>{entry.reason}</p>
-                          <p>
-                            Available:{" "}
-                            {formatAvailability(entry.availableDays, entry.availableTimes)}
-                          </p>
+                        <div className="eligible-card-top">
+                          <h4 className="eligible-patient-name">{getFullName(entry)}</h4>
+                          <span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span>
                         </div>
-                        <button onClick={() => scheduleEntryForSelectedOpening(entry.id)}>
-                          Schedule
-                        </button>
+                        <div className="eligible-card-middle">
+                          <p className="eligible-reason">{entry.reason}</p>
+                          <button className="eligible-schedule-button"
+                            onClick={() => scheduleEntryForSelectedOpening(entry.id)}>
+                            Schedule
+                          </button>
+                        </div>
+                        <p className="eligible-availability">
+                          Available: {formatAvailability(entry.availableDays, entry.availableTimes)}
+                        </p>
                       </article>
                     ))}
                   </div>
@@ -541,7 +611,9 @@ function addOpening() {
           </aside>
         </section>
       )}
-      {activeView === "WAITLIST" && (
+
+      {/* ── WAITLIST VIEW ─────────────────────────────────────── */}
+      {!isActionPageOpen && activeView === "WAITLIST" && (
         <section className="waitlist-page">
           <div className="page-header-row">
             <h1>Waitlist</h1>
@@ -549,57 +621,30 @@ function addOpening() {
           <table>
             <thead>
               <tr>
-                <th>
-                  <button
-                    className="table-sort-button"
-                    onClick={() => handleSortChange("dateAdded")}
-                  >
-                    Date Added {getSortIndicator(sortField, sortDirection, "dateAdded")}
-                  </button>
-                </th>
-                <th>
-                  <button className="table-sort-button" onClick={() => handleSortChange("name")}>
-                    Name {getSortIndicator(sortField, sortDirection, "name")}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    className="table-sort-button"
-                    onClick={() => handleSortChange("provider")}
-                  >
-                    Provider {getSortIndicator(sortField, sortDirection, "provider")}
-                  </button>
-                </th>
-                <th>
-                  <button className="table-sort-button" onClick={() => handleSortChange("tier")}>
-                    Tier {getSortIndicator(sortField, sortDirection, "tier")}
-                  </button>
-                </th>
+                <th><button className="table-sort-button" onClick={() => handleSortChange("dateAdded")}>Date Added {getSortIndicator(sortField, sortDirection, "dateAdded")}</button></th>
+                <th><button className="table-sort-button" onClick={() => handleSortChange("name")}>Name {getSortIndicator(sortField, sortDirection, "name")}</button></th>
+                <th><button className="table-sort-button" onClick={() => handleSortChange("provider")}>Provider {getSortIndicator(sortField, sortDirection, "provider")}</button></th>
+                <th><button className="table-sort-button" onClick={() => handleSortChange("tier")}>Tier {getSortIndicator(sortField, sortDirection, "tier")}</button></th>
                 <th>Reason</th>
                 <th>Dates</th>
                 <th>Times</th>
-                <th>
-                  <button className="table-sort-button" onClick={() => handleSortChange("status")}>
-                    Status {getSortIndicator(sortField, sortDirection, "status")}
-                  </button>
-                </th>
+                <th><button className="table-sort-button" onClick={() => handleSortChange("status")}>Status {getSortIndicator(sortField, sortDirection, "status")}</button></th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sortedWaitlistEntries.map((entry) => (
+              {sortedWaitlistEntries.map(entry => (
                 <tr key={entry.id}>
                   <td>{entry.dateAdded}</td>
                   <td>{getFullName(entry)}</td>
                   <td>{entry.provider}</td>
-                  <td>
-                    <span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span>
-                  </td>
+                  <td><span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span></td>
                   <td>{entry.reason}</td>
                   <td>{entry.availableDays.join(", ") || "Any"}</td>
                   <td>{entry.availableTimes.join(", ") || "Any"}</td>
                   <td>{entry.status}</td>
                   <td>
+                    <button onClick={() => setEditingEntry({ ...entry })}>Edit</button>
                     <button onClick={() => markScheduled(entry.id)}>Schedule</button>
                     <button onClick={() => removeEntry(entry.id)}>Remove</button>
                   </td>
@@ -609,367 +654,572 @@ function addOpening() {
           </table>
         </section>
       )}
-{activeView === "ACTION" && (
-  <section className="action-page">
-    {actionMode === "OPENING" && (
-      <>
-        <h1>Add / Remove Opening</h1>
 
-        <div className="form-grid">
-          <label>
-            Provider
-            <select value={openingProvider} onChange={(e) => setOpeningProvider(e.target.value)}>
-              {providers.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
+      {/* ── ACTION PAGES ──────────────────────────────────────── */}
+      {isActionPageOpen && (
+        <section className="action-page">
 
-          <label>
-            Date
-            <input
-              type="date"
-              value={openingDate}
-              onChange={(e) => setOpeningDate(e.target.value)}
-            />
-          </label>
+          {/* ADD OPENING */}
+          {actionMode === "OPENING" && (
+            <>
+              <div className="action-header-row">
+                <div>
+                  <h1 className="action-page-title">Add Opening</h1>
+                  <p className="action-page-subtitle">Schedule a new provider availability block</p>
+                </div>
+                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>×</button>
+              </div>
 
-          <label>
-            Start
-            <select value={openingStartTime} onChange={(e) => setOpeningStartTime(e.target.value)}>
-              {timeSlots.map((time) => (
-                <option key={time} value={time}>
-                  {time}
-                </option>
-              ))}
-            </select>
-          </label>
+              <div className="form-section-label">Opening details</div>
+              <div className="form-row" style={{ marginBottom: 16 }}>
+                <label className="field-label-block">
+                  <span className="field-label-text">Provider</span>
+                  <select value={openingProvider} onChange={e => setOpeningProvider(e.target.value)}>
+                    {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  </select>
+                </label>
+                <label className="field-label-block field-grow">
+                  <span className="field-label-text">Date</span>
+                  <input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} />
+                </label>
+              </div>
+              <div className="form-row" style={{ marginBottom: 28 }}>
+                <label className="field-label-block">
+                  <span className="field-label-text">Start time</span>
+                  <select value={openingStartTime} onChange={e => setOpeningStartTime(e.target.value)}>
+                    {ALL_TIME_OPTIONS.slice(0,-1).map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+                <label className="field-label-block">
+                  <span className="field-label-text">End time</span>
+                  <select value={openingEndTime} onChange={e => setOpeningEndTime(e.target.value)}>
+                    {ALL_TIME_OPTIONS.slice(1).map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+                <div className="time-range-preview">
+                  <span className="time-range-val">{openingStartTime}</span>
+                  <span className="time-range-sep">→</span>
+                  <span className="time-range-val">{openingEndTime}</span>
+                  <span className="duration-badge">{openingDurationLabel}</span>
+                </div>
+              </div>
+              <div className="form-submit-row">
+                <button className="btn-secondary" onClick={() => setIsActionPageOpen(false)}>Cancel</button>
+                <button className="btn-primary" onClick={addOpening}>+ Add Opening</button>
+              </div>
+              <div className="form-divider" />
+              <div className="items-section">
+                <div className="items-section-header">
+                  <div className="form-section-label" style={{ margin:0, border:"none", padding:0 }}>Existing openings</div>
+                  <span className="items-count">{openings.length} opening{openings.length !== 1 ? "s" : ""}</span>
+                </div>
+                {openings.length === 0 ? (
+                  <p className="empty-message">No openings yet.</p>
+                ) : openings.map(o => {
+                  const color = providers.find(p => p.name === o.provider)?.color ?? "#999";
+                  return (
+                    <div className="item-row" key={o.id}>
+                      <span className="item-dot" style={{ backgroundColor: color }} />
+                      <span className="item-name">{o.provider}</span>
+                      <span className="item-meta">{formatDisplayDate(o.date)}</span>
+                      <span className="item-meta">{o.startTime} – {o.endTime}</span>
+                      <button className="item-edit-btn" onClick={() => { setEditingOpening({ ...o, _original: o }); setIsActionPageOpen(false); }}>Edit</button>
+                      <button className="item-remove-btn" onClick={() => removeOpening(o.id)}>Remove</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
-          <label>
-            End
-            <select value={openingEndTime} onChange={(e) => setOpeningEndTime(e.target.value)}>
-              {["9:00", "10:00", "11:00", "12:00", "1:00", "2:00", "3:00", "4:00", "5:00", "6:00"].map(
-                (time) => (
-                  <option key={time} value={time}>
-                    {time}
-                  </option>
-                )
+          {/* EDIT PROVIDERS */}
+          {actionMode === "EDIT_PROVIDERS" && (
+            <>
+              <div className="action-header-row">
+                <div>
+                  <h1 className="action-page-title">Edit Providers</h1>
+                  <p className="action-page-subtitle">Manage provider names and calendar colors</p>
+                </div>
+                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>×</button>
+              </div>
+              <div className="form-section-label">Add provider</div>
+              <div className="form-row" style={{ marginBottom: 24, alignItems: "flex-end" }}>
+                <label className="field-label-block field-grow">
+                  <span className="field-label-text">Provider name</span>
+                  <input value={providerName} onChange={e => setProviderName(e.target.value)} placeholder="e.g. Dr. Patel" />
+                </label>
+                <label className="field-label-block">
+                  <span className="field-label-text">Calendar color</span>
+                  <div className="color-field-row">
+                    <span className="color-swatch" style={{ backgroundColor: providerColor }} />
+                    <input type="color" value={providerColor} onChange={e => setProviderColor(e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                </label>
+                <button className="btn-primary" onClick={addProvider} style={{ alignSelf: "flex-end" }}>+ Add Provider</button>
+              </div>
+              {providerName.trim() && (
+                <div className="name-preview-bar" style={{ marginBottom: 20 }}>
+                  <span className="color-swatch" style={{ backgroundColor: providerColor }} />
+                  <span className="name-preview-text">Preview: <strong>{providerName.trim()}</strong></span>
+                  <span className="color-hex-badge" style={{ backgroundColor: providerColor + "22", color: providerColor }}>{providerColor}</span>
+                </div>
               )}
-            </select>
-          </label>
+              <div className="form-divider" />
+              <div className="items-section">
+                <div className="items-section-header">
+                  <div className="form-section-label" style={{ margin:0, border:"none", padding:0 }}>Current providers</div>
+                  <span className="items-count">{providers.length} provider{providers.length !== 1 ? "s" : ""}</span>
+                </div>
+                {providers.map(provider => (
+                  <div className="item-row" key={provider.name}>
+                    <span className="item-dot" style={{ backgroundColor: provider.color }} />
+                    <span className="item-name">{provider.name}</span>
+                    <span className="item-color-swatch" style={{ backgroundColor: provider.color }} />
+                    <span className="item-meta">{provider.color}</span>
+                    <button className="item-edit-btn" onClick={() => setEditingProvider({ ...provider, _originalName: provider.name })}>Edit</button>
+                    <button className="item-remove-btn" onClick={() => removeProvider(provider.name)}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
-          <button className="form-submit-button" onClick={addOpening}>
-            Add Opening
-          </button>
+          {/* ADD TO WAITLIST */}
+          {actionMode === "WAITLIST_ENTRY" && (
+            <>
+              <div className="action-header-row">
+                <div>
+                  <h1 className="action-page-title">Add to Waitlist</h1>
+                  <p className="action-page-subtitle">Register a new patient for provider availability</p>
+                </div>
+                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>×</button>
+              </div>
+              <div className="form-section-label">Patient</div>
+              <div className="form-row" style={{ marginBottom: 16 }}>
+                <label className="field-label-block">
+                  <span className="field-label-text">Date added</span>
+                  <input type="date" value={waitlistDateAdded} onChange={e => setWaitlistDateAdded(e.target.value)} />
+                </label>
+                <label className="field-label-block field-grow">
+                  <span className="field-label-text">First name</span>
+                  <input value={waitlistFirstName} onChange={e => setWaitlistFirstName(e.target.value)} placeholder="First name" />
+                </label>
+                <label className="field-label-block field-grow">
+                  <span className="field-label-text">Last name</span>
+                  <input value={waitlistLastName} onChange={e => setWaitlistLastName(e.target.value)} placeholder="Last name" />
+                </label>
+              </div>
+              {(waitlistFirstName || waitlistLastName) && (
+                <div className="name-preview-bar" style={{ marginBottom: 16 }}>
+                  <div className="name-avatar">{waitlistInitials.toUpperCase() || "–"}</div>
+                  <span className="name-preview-text">Patient: <strong>{[waitlistLastName, waitlistFirstName].filter(Boolean).join(", ")}</strong></span>
+                </div>
+              )}
+              <div className="form-row" style={{ marginBottom: 24 }}>
+                <label className="field-label-block field-grow">
+                  <span className="field-label-text">Provider</span>
+                  <select value={waitlistProvider} onChange={e => setWaitlistProvider(e.target.value)}>
+                    {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  </select>
+                </label>
+                <label className="field-label-block field-grow">
+                  <span className="field-label-text">Reason</span>
+                  <input value={waitlistReason} onChange={e => setWaitlistReason(e.target.value)} placeholder="Reason" />
+                </label>
+              </div>
+              <div className="form-section-label">Priority tier</div>
+              <div className="tier-card-grid" style={{ marginBottom: 24 }}>
+                {([1,2,3] as const).map(tier => (
+                  <button key={tier}
+                    className={["tier-card", waitlistTier === tier ? `tier-card-selected tier-${tier}-selected` : ""].join(" ")}
+                    onClick={() => { setWaitlistTier(tier); setWaitlistReason(getTierReason(tier)); }}>
+                    <div className="tier-card-top">
+                      <span className="tier-card-num">Tier {tier}</span>
+                      <span className={`tier-badge tier-${tier}`}>{getTierReason(tier)}</span>
+                    </div>
+                    <div className="tier-card-desc">
+                      {tier === 1 && "Schedule immediately"}
+                      {tier === 2 && "Within a few weeks"}
+                      {tier === 3 && "Standard scheduling"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="form-section-label">Availability</div>
+              <div style={{ marginBottom: 14 }}>
+                <div className="field-label-text" style={{ marginBottom: 8 }}>Available days</div>
+                <div className="day-pill-group">
+                  {dayLabels.map(day => (
+                    <button key={day.code}
+                      className={["day-pill", waitlistAvailableDays.includes(day.code) ? "day-pill-selected" : ""].join(" ")}
+                      onClick={() => toggleWaitlistAvailableDay(day.code)}>
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="field-hint">Leave blank to indicate any day</p>
+              </div>
+              <label className="field-label-block" style={{ maxWidth: 520, marginBottom: 28 }}>
+                <span className="field-label-text">Available times</span>
+                <input value={waitlistAvailableTimesText} onChange={e => setWaitlistAvailableTimesText(e.target.value)}
+                  placeholder="e.g. 9:00-12:00, 2:00-5:00 — leave blank for any time" />
+              </label>
+              <div className="form-submit-row">
+                <button className="btn-secondary" onClick={() => setIsActionPageOpen(false)}>Cancel</button>
+                <button className="btn-primary" onClick={addWaitlistEntry}>+ Add to Waitlist</button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* ── EDIT OPENING MODAL ──────────────────────────────────── */}
+      {editingOpening && (
+        <div className="modal-backdrop" onClick={() => setEditingOpening(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Edit Opening</h2>
+              <button className="close-action-button" onClick={() => setEditingOpening(null)}>×</button>
+            </div>
+            <div className="form-row" style={{ marginBottom: 14 }}>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">Provider</span>
+                <select value={editingOpening.provider}
+                  onChange={e => setEditingOpening({ ...editingOpening, provider: e.target.value })}>
+                  {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                </select>
+              </label>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">Date</span>
+                <input type="date" value={editingOpening.date}
+                  onChange={e => setEditingOpening({ ...editingOpening, date: e.target.value })} />
+              </label>
+            </div>
+            <div className="form-row" style={{ marginBottom: 20 }}>
+              <label className="field-label-block">
+                <span className="field-label-text">Start time</span>
+                <select value={editingOpening.startTime}
+                  onChange={e => setEditingOpening({ ...editingOpening, startTime: e.target.value })}>
+                  {ALL_TIME_OPTIONS.slice(0,-1).map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </label>
+              <label className="field-label-block">
+                <span className="field-label-text">End time</span>
+                <select value={editingOpening.endTime}
+                  onChange={e => setEditingOpening({ ...editingOpening, endTime: e.target.value })}>
+                  {ALL_TIME_OPTIONS.slice(1).map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setEditingOpening(null)}>Cancel</button>
+              <button className="btn-primary" onClick={saveEditingOpening}>Save Changes</button>
+            </div>
+          </div>
         </div>
+      )}
 
-        <div className="opening-list">
-          {openings.map((o) => (
-            <article className="opening-list-card" key={o.id}>
-              <strong>{o.provider}</strong>
-              <span>{o.date}</span>
-              <span>
-                {formatTime(o.startTime)}–{formatTime(o.endTime)}
-              </span>
-              <button onClick={() => removeOpening(o.id)}>Remove</button>
-            </article>
-          ))}
+      {/* ── EDIT ENTRY MODAL ────────────────────────────────────── */}
+      {editingEntry && (
+        <div className="modal-backdrop" onClick={() => setEditingEntry(null)}>
+          <div className="modal-box modal-wide" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Edit Waitlist Entry</h2>
+              <button className="close-action-button" onClick={() => setEditingEntry(null)}>×</button>
+            </div>
+            <div className="form-section-label">Patient</div>
+            <div className="form-row" style={{ marginBottom: 14 }}>
+              <label className="field-label-block">
+                <span className="field-label-text">Date added</span>
+                <input type="date" value={editingEntry.dateAdded}
+                  onChange={e => setEditingEntry({ ...editingEntry, dateAdded: e.target.value })} />
+              </label>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">First name</span>
+                <input value={editingEntry.firstName}
+                  onChange={e => setEditingEntry({ ...editingEntry, firstName: e.target.value })} />
+              </label>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">Last name</span>
+                <input value={editingEntry.lastName}
+                  onChange={e => setEditingEntry({ ...editingEntry, lastName: e.target.value })} />
+              </label>
+            </div>
+            <div className="form-row" style={{ marginBottom: 14 }}>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">Provider</span>
+                <select value={editingEntry.provider}
+                  onChange={e => setEditingEntry({ ...editingEntry, provider: e.target.value })}>
+                  {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                </select>
+              </label>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">Reason</span>
+                <input value={editingEntry.reason}
+                  onChange={e => setEditingEntry({ ...editingEntry, reason: e.target.value })} />
+              </label>
+            </div>
+            <div className="form-section-label">Priority tier</div>
+            <div className="tier-card-grid" style={{ marginBottom: 18 }}>
+              {([1,2,3] as const).map(tier => (
+                <button key={tier}
+                  className={["tier-card", editingEntry.tier === tier ? `tier-card-selected tier-${tier}-selected` : ""].join(" ")}
+                  onClick={() => setEditingEntry({ ...editingEntry, tier, reason: getTierReason(tier) })}>
+                  <div className="tier-card-top">
+                    <span className="tier-card-num">Tier {tier}</span>
+                    <span className={`tier-badge tier-${tier}`}>{getTierReason(tier)}</span>
+                  </div>
+                  <div className="tier-card-desc">
+                    {tier === 1 && "Schedule immediately"}
+                    {tier === 2 && "Within a few weeks"}
+                    {tier === 3 && "Standard scheduling"}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="form-section-label">Availability</div>
+            <div style={{ marginBottom: 12 }}>
+              <div className="field-label-text" style={{ marginBottom: 8 }}>Available days</div>
+              <div className="day-pill-group">
+                {dayLabels.map(day => (
+                  <button key={day.code}
+                    className={["day-pill", editingEntry.availableDays.includes(day.code) ? "day-pill-selected" : ""].join(" ")}
+                    onClick={() => setEditingEntry({
+                      ...editingEntry,
+                      availableDays: editingEntry.availableDays.includes(day.code)
+                        ? editingEntry.availableDays.filter(d => d !== day.code)
+                        : [...editingEntry.availableDays, day.code],
+                    })}>
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="field-label-block" style={{ maxWidth: 520, marginBottom: 20 }}>
+              <span className="field-label-text">Available times</span>
+              <input value={editingEntry.availableTimes.join(", ")}
+                onChange={e => setEditingEntry({
+                  ...editingEntry,
+                  availableTimes: e.target.value.split(",").map(t => t.trim()).filter(Boolean),
+                })}
+                placeholder="e.g. 9:00-12:00, 2:00-5:00" />
+            </label>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setEditingEntry(null)}>Cancel</button>
+              <button className="btn-primary" onClick={saveEditingEntry}>Save Changes</button>
+            </div>
+          </div>
         </div>
-      </>
-    )}
+      )}
 
-    {actionMode === "EDIT_PROVIDERS" && (
-      <>
-        <h1>Edit Providers</h1>
-
-        <div className="form-grid">
-          <label>
-            Name
-            <input
-              value={providerName}
-              onChange={(e) => setProviderName(e.target.value)}
-              placeholder="Provider name"
-            />
-          </label>
-
-          <label>
-            Color
-            <input
-              type="color"
-              value={providerColor}
-              onChange={(e) => setProviderColor(e.target.value)}
-            />
-          </label>
-
-          <button className="form-submit-button" onClick={addProvider}>
-            Add Provider
-          </button>
+      {/* ── EDIT PROVIDER MODAL ─────────────────────────────────── */}
+      {editingProvider && (
+        <div className="modal-backdrop" onClick={() => setEditingProvider(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Edit Provider</h2>
+              <button className="close-action-button" onClick={() => setEditingProvider(null)}>×</button>
+            </div>
+            <div className="form-row" style={{ marginBottom: 14 }}>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">Provider name</span>
+                <input value={editingProvider.name}
+                  onChange={e => setEditingProvider({ ...editingProvider, name: e.target.value })} />
+              </label>
+            </div>
+            <div className="form-row" style={{ marginBottom: 20 }}>
+              <label className="field-label-block field-grow">
+                <span className="field-label-text">Calendar color</span>
+                <div className="color-field-row">
+                  <span className="color-swatch" style={{ backgroundColor: editingProvider.color }} />
+                  <input type="color" value={editingProvider.color}
+                    onChange={e => setEditingProvider({ ...editingProvider, color: e.target.value })}
+                    style={{ flex: 1 }} />
+                </div>
+              </label>
+              <div className="name-preview-bar" style={{ flex: 1, alignSelf: "flex-end" }}>
+                <span className="color-swatch" style={{ backgroundColor: editingProvider.color }} />
+                <span className="name-preview-text">Preview: <strong>{editingProvider.name || "—"}</strong></span>
+                <span className="color-hex-badge" style={{ backgroundColor: editingProvider.color + "22", color: editingProvider.color }}>
+                  {editingProvider.color}
+                </span>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setEditingProvider(null)}>Cancel</button>
+              <button className="btn-primary" onClick={saveEditingProvider}>Save Changes</button>
+            </div>
+          </div>
         </div>
-
-        <div className="provider-edit-list">
-          {providers.map((provider) => (
-            <article className="provider-edit-card" key={provider.name}>
-              <span className="provider-color" style={{ backgroundColor: provider.color }} />
-              <strong>{provider.name}</strong>
-              <button onClick={() => removeProvider(provider.name)}>Remove</button>
-            </article>
-          ))}
-        </div>
-      </>
-    )}
-
-    {actionMode === "WAITLIST_ENTRY" && (
-      <>
-        <h1>Add to Waitlist</h1>
-        <p>
-          Placeholder — form for date added, patient name, provider, tier, reason, available dates,
-          and times goes here.
-        </p>
-      </>
-    )}
-  </section>
-)}
+      )}
     </main>
   );
 }
 
-// Builds a display name in last-name-first format
-function getFullName(entry: WaitlistEntry) {
-  return `${entry.lastName}, ${entry.firstName}`;
-}
+// ── Helpers ──────────────────────────────────────────────────────────
 
-// Returns the default reason label for each tier
+function getFullName(entry: WaitlistEntry) { return `${entry.lastName}, ${entry.firstName}`; }
+
 function getTierReason(tier: 1 | 2 | 3) {
   if (tier === 1) return "Urgent";
   if (tier === 2) return "Semi-urgent";
   return "Routine";
 }
 
-// Parses YYYY-MM-DD as a local date
 function parseLocalDate(dateString: string) {
   const [year, month, day] = dateString.split("-").map(Number);
   return new Date(year, month - 1, day);
 }
 
-// Converts a Date object to YYYY-MM-DD
 function toDateInputValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 }
 
-// Moves a YYYY-MM-DD date by a number of days
 function moveDateByDays(dateString: string, days: number) {
   const date = parseLocalDate(dateString);
   date.setDate(date.getDate() + days);
   return toDateInputValue(date);
 }
 
-// Formats a YYYY-MM-DD date for display
 function formatDisplayDate(dateString: string) {
-  const date = parseLocalDate(dateString);
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return parseLocalDate(dateString).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Returns display time as stored
-function formatTime(time: string) {
-  return time;
-}
-
-// Converts clinic display time to minutes after midnight
 function timeToMinutes(time: string) {
   const [hourString, minuteString] = time.split(":");
   let hour = Number(hourString);
-  const minute = Number(minuteString);
-  if (hour >= 1 && hour <= 7) {
-    hour += 12;
-  }
+  const minute = Number(minuteString ?? "0");
+  if (hour >= 1 && hour <= 7) hour += 12;
   return hour * 60 + minute;
 }
 
-// Converts minutes after midnight to clinic display time
-function minutesToDisplayTime(totalMinutes: number) {
-  let hour = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
-  if (hour > 12) {
-    hour -= 12;
-  }
-  return `${hour}:${String(minute).padStart(2, "0")}`;
+function minutesToTimeString(totalMinutes: number) {
+  let hour   = Math.floor(totalMinutes / 60);
+  const min  = totalMinutes % 60;
+  const disp = hour > 12 ? hour - 12 : hour;
+  return `${disp}:${String(min).padStart(2,"0")}`;
 }
 
-// Parses a time range like 9:00-12:00
+function minutesToDisplayTime(totalMinutes: number) {
+  return minutesToTimeString(totalMinutes);
+}
+
+function getOpeningTopPct(startTime: string) {
+  return ((timeToMinutes(startTime) - CAL_START_MIN) / CAL_SPAN) * 100;
+}
+
+function getOpeningHeightPct(startTime: string, endTime: string) {
+  return ((timeToMinutes(endTime) - timeToMinutes(startTime)) / CAL_SPAN) * 100;
+}
+
 function parseTimeRange(range: string) {
   const [start, end] = range.split("-");
   return { start: timeToMinutes(start), end: timeToMinutes(end) };
 }
 
-// Checks whether two time ranges overlap
 function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number) {
   return aStart < bEnd && bStart < aEnd;
 }
 
-// Checks if a waitlist entry is available for an opening
 function isEntryAvailableForOpening(entry: WaitlistEntry, opening: Opening) {
-  const isFlexibleUrgent =
-    entry.tier === 1 && entry.availableDays.length === 0 && entry.availableTimes.length === 0;
+  const isFlexibleUrgent = entry.tier === 1 && entry.availableDays.length === 0 && entry.availableTimes.length === 0;
   if (isFlexibleUrgent) return true;
   const dayMatches = entry.availableDays.length === 0 || entry.availableDays.includes(opening.day);
   if (!dayMatches) return false;
   if (entry.availableTimes.length === 0) return true;
   const openingStart = timeToMinutes(opening.startTime);
-  const openingEnd = timeToMinutes(opening.endTime);
-  return entry.availableTimes.some((range) => {
+  const openingEnd   = timeToMinutes(opening.endTime);
+  return entry.availableTimes.some(range => {
     const { start, end } = parseTimeRange(range);
     return rangesOverlap(start, end, openingStart, openingEnd);
   });
 }
 
-// Calculates vertical offset for an opening block
-function getOpeningTop(startTime: string) {
-  const calStart = timeToMinutes("8:00");
-  const calEnd = timeToMinutes("6:00");
-  return ((timeToMinutes(startTime) - calStart) / (calEnd - calStart)) * 100;
-}
-
-// Calculates vertical height for an opening block
-function getOpeningHeight(startTime: string, endTime: string) {
-  const calStart = timeToMinutes("8:00");
-  const calEnd = timeToMinutes("6:00");
-  return ((timeToMinutes(endTime) - timeToMinutes(startTime)) / (calEnd - calStart)) * 100;
-}
-
-// Formats waitlist availability for cards
 function formatAvailability(days: DayCode[], times: string[]) {
-  const dayText = days.length > 0 ? days.join(", ") : "Any";
-  const timeText = times.length > 0 ? times.join(", ") : "Any";
-  return `${dayText}; ${timeText}`;
+  return `${days.length > 0 ? days.join(", ") : "Any"}; ${times.length > 0 ? times.join(", ") : "Any"}`;
 }
 
-// Creates all start/end split points for one day
 function getOpeningBreakpoints(dayOpenings: Opening[]) {
   const points = new Set<number>();
-  dayOpenings.forEach((opening) => {
-    points.add(timeToMinutes(opening.startTime));
-    points.add(timeToMinutes(opening.endTime));
-  });
-  return [...points].sort((a, b) => a - b);
+  dayOpenings.forEach(o => { points.add(timeToMinutes(o.startTime)); points.add(timeToMinutes(o.endTime)); });
+  return [...points].sort((a,b) => a-b);
 }
 
-// Builds visual segments so openings regain full width after overlaps end
 function buildOpeningSegments(dayOpenings: Opening[]): OpeningSegment[] {
   const breakpoints = getOpeningBreakpoints(dayOpenings);
   const rawSegments: OpeningSegment[] = [];
   for (let i = 0; i < breakpoints.length - 1; i++) {
-    const segmentStart = breakpoints[i];
-    const segmentEnd = breakpoints[i + 1];
+    const segStart = breakpoints[i];
+    const segEnd   = breakpoints[i+1];
     const activeOpenings = dayOpenings
-      .filter((opening) => {
-        const openingStart = timeToMinutes(opening.startTime);
-        const openingEnd = timeToMinutes(opening.endTime);
-        return openingStart < segmentEnd && openingEnd > segmentStart;
-      })
-      .sort((a, b) => {
-        const startDiff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-        if (startDiff !== 0) return startDiff;
-        return a.provider.localeCompare(b.provider);
+      .filter(o => timeToMinutes(o.startTime) < segEnd && timeToMinutes(o.endTime) > segStart)
+      .sort((a,b) => {
+        const diff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
+        return diff !== 0 ? diff : a.provider.localeCompare(b.provider);
       });
     activeOpenings.forEach((opening, index) => {
       const count = activeOpenings.length;
       rawSegments.push({
         opening,
-        startTime: minutesToDisplayTime(segmentStart),
-        endTime: minutesToDisplayTime(segmentEnd),
-        left: `calc(${(index / count) * 100}% + 4px)`,
-        width: `calc(${100 / count}% - 8px)`,
-        widthPercent: 100 / count,
+        startTime:    minutesToDisplayTime(segStart),
+        endTime:      minutesToDisplayTime(segEnd),
+        left:         `calc(${(index/count)*100}% + 4px)`,
+        width:        `calc(${100/count}% - 8px)`,
+        widthPercent: 100/count,
         index,
-        showLabel: false,
+        showLabel:    false,
         isFirstPiece: false,
-        isLastPiece: false,
+        isLastPiece:  false,
       });
     });
   }
   return labelAndConnectOpeningSegments(mergeAdjacentOpeningSegments(rawSegments));
 }
 
-// Combines adjacent pieces when the opening keeps the same layout
 function mergeAdjacentOpeningSegments(segments: OpeningSegment[]) {
   const merged: OpeningSegment[] = [];
-  for (const segment of segments) {
-    const previous = merged[merged.length - 1];
-    const canMerge =
-      previous &&
-      previous.opening.id === segment.opening.id &&
-      previous.endTime === segment.startTime &&
-      previous.left === segment.left &&
-      previous.width === segment.width;
-    if (canMerge) {
-      previous.endTime = segment.endTime;
+  for (const seg of segments) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.opening.id === seg.opening.id && prev.endTime === seg.startTime && prev.left === seg.left && prev.width === seg.width) {
+      prev.endTime = seg.endTime;
     } else {
-      merged.push({ ...segment });
+      merged.push({ ...seg });
     }
   }
   return merged;
 }
 
-// Marks which visual pieces should show text and rounded ends
 function labelAndConnectOpeningSegments(segments: OpeningSegment[]) {
-  return segments.map((segment) => {
-    const sameOpeningSegments = segments.filter((s) => s.opening.id === segment.opening.id);
-    const firstSegment = sameOpeningSegments.reduce((best, current) =>
-      timeToMinutes(current.startTime) < timeToMinutes(best.startTime) ? current : best
-    );
-    const lastSegment = sameOpeningSegments.reduce((best, current) =>
-      timeToMinutes(current.endTime) > timeToMinutes(best.endTime) ? current : best
-    );
-    const labelSegment = sameOpeningSegments.reduce((best, current) => {
-      const bestDuration = timeToMinutes(best.endTime) - timeToMinutes(best.startTime);
-      const currentDuration = timeToMinutes(current.endTime) - timeToMinutes(current.startTime);
-      if (current.widthPercent > best.widthPercent) {
-        return current;
-      }
-      if (current.widthPercent === best.widthPercent && currentDuration > bestDuration) {
-        return current;
-      }
-      return best;
+  return segments.map(segment => {
+    const same = segments.filter(s => s.opening.id === segment.opening.id);
+    const first = same.reduce((b,c) => timeToMinutes(c.startTime) < timeToMinutes(b.startTime) ? c : b);
+    const last  = same.reduce((b,c) => timeToMinutes(c.endTime)   > timeToMinutes(b.endTime)   ? c : b);
+    const label = same.reduce((b,c) => {
+      if (c.widthPercent > b.widthPercent) return c;
+      const bDur = timeToMinutes(b.endTime) - timeToMinutes(b.startTime);
+      const cDur = timeToMinutes(c.endTime) - timeToMinutes(c.startTime);
+      return (c.widthPercent === b.widthPercent && cDur > bDur) ? c : b;
     });
     return {
       ...segment,
-      showLabel:
-        segment.startTime === labelSegment.startTime &&
-        segment.endTime === labelSegment.endTime &&
-        segment.left === labelSegment.left &&
-        segment.width === labelSegment.width,
-      isFirstPiece:
-        segment.startTime === firstSegment.startTime &&
-        segment.left === firstSegment.left &&
-        segment.width === firstSegment.width,
-      isLastPiece:
-        segment.endTime === lastSegment.endTime &&
-        segment.left === lastSegment.left &&
-        segment.width === lastSegment.width,
+      showLabel: segment.startTime === label.startTime && segment.endTime === label.endTime && segment.left === label.left,
+      isFirstPiece: segment.startTime === first.startTime && segment.left === first.left && segment.width === first.width,
+      isLastPiece:  segment.endTime   === last.endTime   && segment.left === last.left   && segment.width === last.width,
     };
   });
 }
 
-// Returns the active sort arrow for a table column
-function getSortIndicator(current: SortField, direction: "asc" | "desc", column: SortField) {
+function getSortIndicator(current: SortField, direction: "asc"|"desc", column: SortField) {
   if (current !== column) return "";
   return direction === "asc" ? "↑" : "↓";
 }
 
-// Returns the next numeric id for an id-based list
 function getNextId(items: { id: number }[]) {
-  return items.length === 0 ? 1 : Math.max(...items.map((item) => item.id)) + 1;
+  return items.length === 0 ? 1 : Math.max(...items.map(i => i.id)) + 1;
 }
 
-// Converts a date into the app's weekday code
 function getDayCodeFromDate(dateString: string): DayCode {
   const day = parseLocalDate(dateString).getDay();
-
   if (day === 1) return "M";
   if (day === 2) return "Tu";
   if (day === 3) return "W";
