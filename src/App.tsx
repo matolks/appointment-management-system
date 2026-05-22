@@ -18,7 +18,7 @@ import "./App.css";
 type WaitlistStatus = "WAITLISTED" | "SCHEDULED" | "REMOVED";
 type DayCode = "M" | "Tu" | "W" | "Th" | "F";
 type ViewMode = "CALENDAR" | "WAITLIST" | "ACTION";
-type ActionMode = "OPENING" | "WAITLIST_ENTRY";
+type ActionMode = "OPENING" | "WAITLIST_ENTRY" | "EDIT_PROVIDERS";
 type SortField = "dateAdded" | "name" | "provider" | "tier" | "status";
 
 type WaitlistEntry = {
@@ -61,11 +61,21 @@ type OpeningSegment = {
   isLastPiece: boolean;
 };
 
-// Providers shown in the legend and used to color openings
-const providers: Provider[] = [
+// Tracks editable providers shown in the legend
+const [providers, setProviders] = useState<Provider[]>([
   { name: "Provider A", color: "#5877ff" },
   { name: "Provider B", color: "#c9a227" },
-];
+]);
+
+// Tracks the provider editor form
+const [providerName, setProviderName] = useState("");
+const [providerColor, setProviderColor] = useState("#5877ff");
+
+// Tracks the opening form
+const [openingProvider, setOpeningProvider] = useState("Provider A");
+const [openingDate, setOpeningDate] = useState("2026-05-29");
+const [openingStartTime, setOpeningStartTime] = useState("9:00");
+const [openingEndTime, setOpeningEndTime] = useState("10:00");
 
 // Calendar days shown in the work week
 const dayLabels: { code: DayCode; label: string }[] = [
@@ -299,6 +309,52 @@ function App() {
     }
   }
 
+  // Opens the provider editor from the legend column
+function openEditProvidersPage() {
+  setActionMode("EDIT_PROVIDERS");
+  setActiveView("ACTION");
+}
+
+// Adds a provider to the legend
+function addProvider() {
+  const cleanName = providerName.trim();
+
+  if (!cleanName) return;
+  if (providers.some((p) => p.name.toLowerCase() === cleanName.toLowerCase())) return;
+
+  setProviders((prev) => [...prev, { name: cleanName, color: providerColor }]);
+  setProviderName("");
+  setProviderColor("#5877ff");
+}
+
+// Removes a provider and that provider's openings
+function removeProvider(name: string) {
+  setProviders((prev) => prev.filter((p) => p.name !== name));
+  setOpenings((prev) => prev.filter((o) => o.provider !== name));
+
+  if (openingProvider === name) {
+    const fallback = providers.find((p) => p.name !== name)?.name ?? "";
+    setOpeningProvider(fallback);
+  }
+}
+
+// Adds an opening to the calendar
+function addOpening() {
+  if (!openingProvider || !openingDate || !openingStartTime || !openingEndTime) return;
+  if (timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)) return;
+
+  const nextOpening: Opening = {
+    id: getNextId(openings),
+    provider: openingProvider,
+    date: openingDate,
+    day: getDayCodeFromDate(openingDate),
+    startTime: openingStartTime,
+    endTime: openingEndTime,
+  };
+
+  setOpenings((prev) => [...prev, nextOpening]);
+}
+
   // Toggles sort direction when clicking the same column
   function handleSortChange(next: SortField) {
     if (next === sortField) {
@@ -341,20 +397,22 @@ function App() {
 
       {activeView === "CALENDAR" && (
         <section className="calendar-page">
-          <aside className="legend-panel">
-            <h2>Legend</h2>
+        <aside className="legend-panel">
+          <h2>Legend</h2>
 
-            <div className="provider-list">
-              {providers.map((p) => (
-                <div className="provider-key" key={p.name}>
-                  <span>{p.name}</span>
-                  <span className="provider-color" style={{ backgroundColor: p.color }} />
-                </div>
-              ))}
-            </div>
+          <div className="provider-list">
+            {providers.map((p) => (
+              <div className="provider-key" key={p.name}>
+                <span>{p.name}</span>
+                <span className="provider-color" style={{ backgroundColor: p.color }} />
+              </div>
+            ))}
+          </div>
 
-            <button className="secondary-button">Edit Providers</button>
-          </aside>
+          <button className="secondary-button" onClick={openEditProvidersPage}>
+            Edit Providers
+          </button>
+        </aside>
 
           <section className="calendar-panel">
             <div className="week-controls">
@@ -551,36 +609,128 @@ function App() {
           </table>
         </section>
       )}
-      {activeView === "ACTION" && (
-        <section className="action-page">
-          {actionMode === "OPENING" ? (
-            <>
-              <h1>Add / Remove Opening</h1>
-              <p>Placeholder — form for provider, date, start time, and end time goes here.</p>
-              <div className="opening-list">
-                {openings.map((o) => (
-                  <article className="opening-list-card" key={o.id}>
-                    <strong>{o.provider}</strong>
-                    <span>{o.date}</span>
-                    <span>
-                      {formatTime(o.startTime)}–{formatTime(o.endTime)}
-                    </span>
-                    <button onClick={() => removeOpening(o.id)}>Remove</button>
-                  </article>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <h1>Add to Waitlist</h1>
-              <p>
-                Placeholder — form for date added, patient name, provider, tier, reason, available
-                dates, and times goes here.
-              </p>
-            </>
-          )}
-        </section>
-      )}
+{activeView === "ACTION" && (
+  <section className="action-page">
+    {actionMode === "OPENING" && (
+      <>
+        <h1>Add / Remove Opening</h1>
+
+        <div className="form-grid">
+          <label>
+            Provider
+            <select value={openingProvider} onChange={(e) => setOpeningProvider(e.target.value)}>
+              {providers.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Date
+            <input
+              type="date"
+              value={openingDate}
+              onChange={(e) => setOpeningDate(e.target.value)}
+            />
+          </label>
+
+          <label>
+            Start
+            <select value={openingStartTime} onChange={(e) => setOpeningStartTime(e.target.value)}>
+              {timeSlots.map((time) => (
+                <option key={time} value={time}>
+                  {time}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            End
+            <select value={openingEndTime} onChange={(e) => setOpeningEndTime(e.target.value)}>
+              {["9:00", "10:00", "11:00", "12:00", "1:00", "2:00", "3:00", "4:00", "5:00", "6:00"].map(
+                (time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+
+          <button className="form-submit-button" onClick={addOpening}>
+            Add Opening
+          </button>
+        </div>
+
+        <div className="opening-list">
+          {openings.map((o) => (
+            <article className="opening-list-card" key={o.id}>
+              <strong>{o.provider}</strong>
+              <span>{o.date}</span>
+              <span>
+                {formatTime(o.startTime)}–{formatTime(o.endTime)}
+              </span>
+              <button onClick={() => removeOpening(o.id)}>Remove</button>
+            </article>
+          ))}
+        </div>
+      </>
+    )}
+
+    {actionMode === "EDIT_PROVIDERS" && (
+      <>
+        <h1>Edit Providers</h1>
+
+        <div className="form-grid">
+          <label>
+            Name
+            <input
+              value={providerName}
+              onChange={(e) => setProviderName(e.target.value)}
+              placeholder="Provider name"
+            />
+          </label>
+
+          <label>
+            Color
+            <input
+              type="color"
+              value={providerColor}
+              onChange={(e) => setProviderColor(e.target.value)}
+            />
+          </label>
+
+          <button className="form-submit-button" onClick={addProvider}>
+            Add Provider
+          </button>
+        </div>
+
+        <div className="provider-edit-list">
+          {providers.map((provider) => (
+            <article className="provider-edit-card" key={provider.name}>
+              <span className="provider-color" style={{ backgroundColor: provider.color }} />
+              <strong>{provider.name}</strong>
+              <button onClick={() => removeProvider(provider.name)}>Remove</button>
+            </article>
+          ))}
+        </div>
+      </>
+    )}
+
+    {actionMode === "WAITLIST_ENTRY" && (
+      <>
+        <h1>Add to Waitlist</h1>
+        <p>
+          Placeholder — form for date added, patient name, provider, tier, reason, available dates,
+          and times goes here.
+        </p>
+      </>
+    )}
+  </section>
+)}
     </main>
   );
 }
@@ -809,6 +959,22 @@ function labelAndConnectOpeningSegments(segments: OpeningSegment[]) {
 function getSortIndicator(current: SortField, direction: "asc" | "desc", column: SortField) {
   if (current !== column) return "";
   return direction === "asc" ? "↑" : "↓";
+}
+
+// Returns the next numeric id for an id-based list
+function getNextId(items: { id: number }[]) {
+  return items.length === 0 ? 1 : Math.max(...items.map((item) => item.id)) + 1;
+}
+
+// Converts a date into the app's weekday code
+function getDayCodeFromDate(dateString: string): DayCode {
+  const day = parseLocalDate(dateString).getDay();
+
+  if (day === 1) return "M";
+  if (day === 2) return "Tu";
+  if (day === 3) return "W";
+  if (day === 4) return "Th";
+  return "F";
 }
 
 export default App;
