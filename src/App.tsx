@@ -1,7 +1,5 @@
-// Excel import/export
-// 14 day expiration make sure its 14 days past currnt day ot if you add something in way furture
-
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import * as XLSX from "xlsx";
 import "./App.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,6 +67,31 @@ type RemovedRecord = {
   tier: 1 | 2 | 3;
   reason: string;
   status: "REMOVED";
+};
+
+type ImportPreviewStatus = "READY" | "WARNING" | "ERROR";
+
+type ImportPreviewRow = {
+  id: number;
+  rowNumber: number;
+  dateAdded: string;
+  firstName: string;
+  lastName: string;
+  provider: string;
+  tier: 1 | 2 | 3;
+  reason: string;
+  availableDays: DayCode[];
+  availableTimes: string[];
+  status: ImportPreviewStatus;
+  messages: string[];
+  raw: {
+    dateAdded: string;
+    name: string;
+    provider: string;
+    tier: string;
+    dates: string;
+    times: string;
+  };
 };
 
 // For schedule start/end dropdowns
@@ -148,6 +171,12 @@ const ALL_TIME_OPTIONS = buildTimeOptions(CAL_START_MIN, CAL_END_MIN, SNAP);
 // Default provider color for new or edited providers
 const DEFAULT_PROVIDER_COLOR = "#5877ff";
 
+// Used when an imported sheet references providers that do not exist yet.
+const IMPORT_PROVIDER_COLORS = [
+  "#5877ff", "#c9a227", "#6db870", "#d06060", "#9a77ff",
+  "#4ca6a8", "#d47a3c", "#cc66aa", "#7898d8", "#7a9a54",
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,26 +200,20 @@ function App() {
   const [editingProvider, setEditingProvider] = useState<EditingProvider | null>(null);
   const [pendingRemoval,  setPendingRemoval]  = useState<PendingRemoval  | null>(null);
 
+  // Import / export modal state ───────────────────────────────────────────
+  const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
+  const [importPreviewRows,       setImportPreviewRows]       = useState<ImportPreviewRow[]>([]);
+  const [importFileName,          setImportFileName]          = useState("");
+  const [importError,             setImportError]             = useState("");
+  const [isImportDragOver,        setIsImportDragOver]        = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
+
   // Core data ─────────────────────────────────────────────────────────────
-  const [providers, setProviders] = useState<Provider[]>([
-    { name: "Provider A", color: "#5877ff" },
-    { name: "Provider B", color: "#c9a227" },
-  ]);
+  const [providers, setProviders] = useState<Provider[]>([]);
 
-  const [entries, setEntries] = useState<WaitlistEntry[]>([
-    { id: 1, dateAdded: "2026-05-22", firstName: "John",   lastName: "Smith",  provider: "Provider A", tier: 1, reason: getTierReason(1), availableDays: [],         availableTimes: [],                        status: "WAITLISTED" },
-    { id: 2, dateAdded: "2026-05-20", firstName: "Mary",   lastName: "Adams",  provider: "Provider A", tier: 2, reason: getTierReason(2), availableDays: ["Tu","Th"], availableTimes: ["9:00-12:00","2:00-5:00"], status: "WAITLISTED" },
-    { id: 3, dateAdded: "2026-05-18", firstName: "Alex",   lastName: "Rivera", provider: "Provider B", tier: 1, reason: getTierReason(1), availableDays: [],         availableTimes: [],                        status: "WAITLISTED" },
-    { id: 4, dateAdded: "2026-05-16", firstName: "Sarah",  lastName: "Miller", provider: "Provider B", tier: 3, reason: getTierReason(3), availableDays: ["Th","F"], availableTimes: ["1:00-4:00"],              status: "WAITLISTED" },
-    { id: 5, dateAdded: "2026-05-15", firstName: "Daniel", lastName: "Clark",  provider: "Provider A", tier: 1, reason: getTierReason(1), availableDays: [],         availableTimes: [],                        status: "WAITLISTED" },
-  ]);
+  const [entries, setEntries] = useState<WaitlistEntry[]>([]);
 
-  const [openings, setOpenings] = useState<Opening[]>([
-    { id: 1, provider: "Provider A", date: "2026-05-26", day: "Tu", startTime: "9:00",  endTime: "1:00"  },
-    { id: 2, provider: "Provider B", date: "2026-05-28", day: "Th", startTime: "8:00",  endTime: "10:00" },
-    { id: 3, provider: "Provider B", date: "2026-05-28", day: "Th", startTime: "1:00",  endTime: "4:00"  },
-    { id: 4, provider: "Provider A", date: "2026-05-28", day: "Th", startTime: "9:00",  endTime: "11:00" },
-  ]);
+  const [openings, setOpenings] = useState<Opening[]>([]);
 
   const [scheduledRecords, setScheduledRecords] = useState<ScheduledRecord[]>([]);
   const [removedRecords,   setRemovedRecords]   = useState<RemovedRecord[]>([]);
@@ -199,16 +222,16 @@ function App() {
   const [scheduleSelections, setScheduleSelections] = useState<Record<number, ScheduleSelection>>({});
 
   // "Add Opening" form state ───────────────────────────────────────────────
-  const [openingProvider,   setOpeningProvider]   = useState("Provider A");
+  const [openingProvider,   setOpeningProvider]   = useState("");
   const [openingDate,       setOpeningDate]       = useState(getDefaultOpeningDate);
-  const [openingStartTime,  setOpeningStartTime]  = useState("9:00");
-  const [openingEndTime,    setOpeningEndTime]    = useState("10:00");
+  const [openingStartTime,  setOpeningStartTime]  = useState("8:00");
+  const [openingEndTime,    setOpeningEndTime]    = useState("9:00");
 
   // "Add to Waitlist" form state ───────────────────────────────────────────
   const [waitlistDateAdded,        setWaitlistDateAdded]        = useState(getTodayDateInputValue);
   const [waitlistFirstName,        setWaitlistFirstName]        = useState("");
   const [waitlistLastName,         setWaitlistLastName]         = useState("");
-  const [waitlistProvider,         setWaitlistProvider]         = useState("Provider A");
+  const [waitlistProvider,         setWaitlistProvider]         = useState("");
   const [waitlistTier,             setWaitlistTier]             = useState<1 | 2 | 3>(1);
   const [waitlistReason,           setWaitlistReason]           = useState(getTierReason(1));
   const [waitlistAvailableDays,    setWaitlistAvailableDays]    = useState<DayCode[]>([]);
@@ -234,29 +257,38 @@ function App() {
   // EFFECTS
   // ─────────────────────────────────────────────────────────────────────────
 
-  // old stale records (older than RETENTION_DAYS) from openings and history.
-  // Entries whose scheduled/removed records have been purged are also removed.
+  // Retention rules:
+  // - Openings expire only when the opening date is at least RETENTION_DAYS in the past.
+  // - Scheduled records expire only when the appointment date is at least RETENTION_DAYS in the past.
+  // - Removed records expire when the removed date is at least RETENTION_DAYS in the past.
+  // Entries whose scheduled/removed records expire are also removed from the backing entries array.
   useEffect(() => {
     const today = startOfLocalDay(new Date());
+
     const staleScheduledEntryIds = new Set(
       scheduledRecords
-        .filter(r => isDateAtLeastRetentionDaysOld(r.dateScheduled, today))
+        .filter(r => isDateAtLeastRetentionDaysOld(r.appointmentDate, today))
         .map(r => r.entryId),
     );
+
     const staleRemovedEntryIds = new Set(
       removedRecords
         .filter(r => isDateAtLeastRetentionDaysOld(r.dateRemoved, today))
         .map(r => r.entryId),
     );
+
     setOpenings(prev =>
       filterWithoutStateChange(prev, o => !isDateAtLeastRetentionDaysOld(o.date, today)),
     );
+
     setScheduledRecords(prev =>
-      filterWithoutStateChange(prev, r => !isDateAtLeastRetentionDaysOld(r.dateScheduled, today)),
+      filterWithoutStateChange(prev, r => !isDateAtLeastRetentionDaysOld(r.appointmentDate, today)),
     );
+
     setRemovedRecords(prev =>
       filterWithoutStateChange(prev, r => !isDateAtLeastRetentionDaysOld(r.dateRemoved, today)),
     );
+
     if (staleScheduledEntryIds.size > 0 || staleRemovedEntryIds.size > 0) {
       setEntries(prev =>
         filterWithoutStateChange(prev, e =>
@@ -266,6 +298,19 @@ function App() {
       );
     }
   }, [scheduledRecords, removedRecords]);
+
+
+  // Keep provider dropdown state valid after providers are added, removed, imported, or renamed.
+  useEffect(() => {
+    setOpeningProvider(current =>
+      providers.some(p => p.name === current) ? current : providers[0]?.name ?? "",
+    );
+
+    setWaitlistProvider(current =>
+      providers.some(p => p.name === current) ? current : providers[0]?.name ?? "",
+    );
+  }, [providers]);
+
   // If the selected opening is deleted (by cleanup or the user), deselect it
   useEffect(() => {
     if (selectedOpeningId !== null && !openings.some(o => o.id === selectedOpeningId)) {
@@ -391,6 +436,10 @@ function App() {
   const waitlistedCount = entries.filter(e => e.status === "WAITLISTED").length;
   const scheduledCount  = scheduledRecords.length;
 
+  const importValidRows   = importPreviewRows.filter(row => row.status !== "ERROR");
+  const importErrorRows   = importPreviewRows.filter(row => row.status === "ERROR");
+  const importWarningRows = importPreviewRows.filter(row => row.status === "WARNING");
+
   const todayDateString = getTodayDateInputValue();
 
   const upcomingScheduledRecords = [...scheduledRecords]
@@ -436,6 +485,109 @@ function App() {
   function openActionPage() {
     setActionMode(activeView === "WAITLIST" ? "WAITLIST_ENTRY" : "OPENING");
     setIsActionPageOpen(true);
+  }
+
+  function clearImportPreview() {
+    setImportPreviewRows([]);
+    setImportFileName("");
+    setImportError("");
+    setIsImportDragOver(false);
+    if (importFileInputRef.current) importFileInputRef.current.value = "";
+  }
+
+  function closeImportExportModal() {
+    setIsImportExportModalOpen(false);
+    clearImportPreview();
+  }
+
+  function handleImportFile(file: File | null) {
+    if (!file) return;
+    setImportError("");
+    setImportFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = event => {
+      try {
+        const data = event.target?.result;
+        if (!data) throw new Error("Unable to read the selected file.");
+        const workbook = XLSX.read(data, { type: "array", cellDates: true });
+        const firstSheetName = workbook.SheetNames[0];
+        if (!firstSheetName) throw new Error("The workbook does not contain a sheet.");
+
+        const parsedRows = parseImportedWaitlistSheet(workbook.Sheets[firstSheetName]);
+        const annotatedRows = annotateImportedProviders(parsedRows, providers);
+        setImportPreviewRows(annotatedRows);
+        if (annotatedRows.length === 0) setImportError("No waitlist rows were found in the first sheet.");
+      } catch (error) {
+        setImportPreviewRows([]);
+        setImportError(error instanceof Error ? error.message : "The file could not be imported.");
+      }
+    };
+    reader.onerror = () => setImportError("The file could not be read.");
+    reader.readAsArrayBuffer(file);
+  }
+
+  function confirmImportRows() {
+    const rowsToImport = importPreviewRows.filter(row => row.status !== "ERROR");
+    if (rowsToImport.length === 0) return;
+
+    const providerNameByKey = new Map(providers.map(p => [p.name.trim().toLowerCase(), p.name]));
+    const providersToAdd: Provider[] = [];
+
+    for (const row of rowsToImport) {
+      const providerName = row.provider.trim();
+      const key = providerName.toLowerCase();
+      if (!key || providerNameByKey.has(key)) continue;
+      providerNameByKey.set(key, providerName);
+      providersToAdd.push({
+        name:  providerName,
+        color: IMPORT_PROVIDER_COLORS[(providers.length + providersToAdd.length) % IMPORT_PROVIDER_COLORS.length],
+      });
+    }
+
+    let nextEntryId = getNextId(entries);
+    const importedEntries: WaitlistEntry[] = rowsToImport.map(row => {
+      const providerKey = row.provider.trim().toLowerCase();
+      return {
+        id:             nextEntryId++,
+        dateAdded:      row.dateAdded,
+        firstName:      row.firstName,
+        lastName:       row.lastName,
+        provider:       providerNameByKey.get(providerKey) ?? row.provider.trim(),
+        tier:           row.tier,
+        reason:         getTierReason(row.tier),
+        availableDays:  row.availableDays,
+        availableTimes: row.availableTimes,
+        status:         "WAITLISTED",
+      };
+    });
+
+    if (providersToAdd.length > 0) setProviders(prev => [...prev, ...providersToAdd]);
+    setEntries(prev => [...prev, ...importedEntries]);
+    setActiveView("WAITLIST");
+    setWaitlistHistoryPanel("ACTIVE");
+    closeImportExportModal();
+  }
+
+  function exportWaitlistToExcel() {
+    const rows = entries
+      .filter(entry => entry.status === "WAITLISTED")
+      .map(entry => ({
+        "Date added": formatDateForExport(entry.dateAdded),
+        Name:         formatPersonName(entry.firstName, entry.lastName),
+        Provider:     entry.provider,
+        Tier:         entry.tier,
+        Reason:       getTierReason(entry.tier),
+        Dates:        entry.availableDays.join(","),
+        Times:        formatAvailableTimesForExport(entry.availableTimes),
+      }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: ["Date added", "Name", "Provider", "Tier", "Reason", "Dates", "Times"],
+    });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Waitlist");
+    XLSX.writeFile(workbook, `waitlist-export-${getTodayDateInputValue()}.xlsx`);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -629,7 +781,7 @@ function App() {
       id:           record.id,
       entryId:      record.entryId,
       title:        "Delete scheduled record?",
-      message:      `This will permanently delete the scheduled record for ${record.lastName}, ${record.firstName}.`,
+      message:      `This will permanently delete the scheduled record for ${formatPersonName(record.firstName, record.lastName)}.`,
       confirmLabel: "Delete Record",
     });
   }
@@ -640,7 +792,7 @@ function App() {
       id:           record.id,
       entryId:      record.entryId,
       title:        "Delete removed record?",
-      message:      `This will permanently delete the removed record for ${record.lastName}, ${record.firstName}.`,
+      message:      `This will permanently delete the removed record for ${formatPersonName(record.firstName, record.lastName)}.`,
       confirmLabel: "Delete Record",
     });
   }
@@ -808,7 +960,7 @@ function App() {
           {records.map(record => (
             <tr key={record.id}>
               <td>{record.dateScheduled}</td>
-              <td>{record.lastName}, {record.firstName}</td>
+              <td>{formatPersonName(record.firstName, record.lastName)}</td>
               <td>{record.provider}</td>
               <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
               <td>{record.status}</td>
@@ -852,9 +1004,14 @@ function App() {
             Waitlist <span className="nav-count">{waitlistedCount}</span>
           </button>
         </nav>
-        <button className="corner-action-button" onClick={openActionPage}>
-          {cornerActionLabel}
-        </button>
+        <div className="top-actions">
+          <button className="corner-action-button" onClick={() => setIsImportExportModalOpen(true)}>
+            Import/Export
+          </button>
+          <button className="corner-action-button" onClick={openActionPage}>
+            {cornerActionLabel}
+          </button>
+        </div>
       </header>
 
       {/* ── CALENDAR VIEW ─────────────────────────────────────────────────── */}
@@ -1038,7 +1195,10 @@ function App() {
                   </div>
                 </div>
 
-                <h3>Eligible Waitlist</h3>
+                <div className="eligible-list-header">
+                  <h3>Eligible Waitlist</h3>
+                  <span className="items-count">{eligibleEntries.length}</span>
+                </div>
 
                 {eligibleEntries.length === 0 ? (
                   <p className="empty-message">No eligible waitlist entries for this opening.</p>
@@ -1217,7 +1377,7 @@ function App() {
                   {removedRecords.map(record => (
                     <tr key={record.id}>
                       <td>{record.dateRemoved}</td>
-                      <td>{record.lastName}, {record.firstName}</td>
+                      <td>{formatPersonName(record.firstName, record.lastName)}</td>
                       <td>{record.provider}</td>
                       <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
                       <td>{record.status}</td>
@@ -1511,6 +1671,115 @@ function App() {
         </section>
       )}
 
+      {/* ── IMPORT / EXPORT MODAL ─────────────────────────────────────────── */}
+      {isImportExportModalOpen && (
+        <div className="modal-backdrop" onClick={closeImportExportModal}>
+          <div className="modal-box modal-xl import-export-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h2 className="modal-title">Import / Export Waitlist</h2>
+                <p className="modal-subtitle">Expected columns: Date added, Name, Provider, Tier, Reason, Dates, Times.</p>
+              </div>
+              <button className="close-action-button" onClick={closeImportExportModal}>×</button>
+            </div>
+
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              style={{ display: "none" }}
+              onChange={e => handleImportFile(e.target.files?.[0] ?? null)}
+            />
+
+            <div className="import-export-actions">
+              <div
+                className={["import-dropzone", isImportDragOver ? "drag-over" : ""].join(" ")}
+                onDragOver={e => { e.preventDefault(); setIsImportDragOver(true); }}
+                onDragLeave={() => setIsImportDragOver(false)}
+                onDrop={e => {
+                  e.preventDefault();
+                  setIsImportDragOver(false);
+                  handleImportFile(e.dataTransfer.files?.[0] ?? null);
+                }}
+              >
+                <div className="import-dropzone-title">Drag and drop an Excel file</div>
+                <div className="import-dropzone-subtitle">Accepted: .xlsx, .xls, .csv</div>
+                <button className="btn-secondary" onClick={() => importFileInputRef.current?.click()}>
+                  Select File
+                </button>
+              </div>
+
+              <div className="export-card">
+                <div>
+                  <h3>Export active waitlist</h3>
+                  <p>Downloads the current waitlisted patients in the same import format.</p>
+                </div>
+                <button className="btn-primary" onClick={exportWaitlistToExcel}>
+                  Export Excel
+                </button>
+              </div>
+            </div>
+
+            {importError && <p className="import-error-message">{importError}</p>}
+
+            {importPreviewRows.length > 0 && (
+              <section className="import-preview-section">
+                <div className="import-preview-header">
+                  <div>
+                    <h3>Preview {importFileName ? `— ${importFileName}` : ""}</h3>
+                    <p>
+                      {importValidRows.length} ready, {importWarningRows.length} warning, {importErrorRows.length} error.
+                      Rows with errors will not be imported.
+                    </p>
+                  </div>
+                  <button className="btn-secondary" onClick={clearImportPreview}>Clear</button>
+                </div>
+
+                <div className="import-preview-table-wrap">
+                  <table className="import-preview-table">
+                    <thead>
+                      <tr>
+                        <th>Row</th>
+                        <th>Status</th>
+                        <th>Date Added</th>
+                        <th>Name</th>
+                        <th>Provider</th>
+                        <th>Tier</th>
+                        <th>Dates</th>
+                        <th>Times</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreviewRows.map(row => (
+                        <tr key={row.id} className={`import-row-${row.status.toLowerCase()}`}>
+                          <td>{row.rowNumber}</td>
+                          <td><span className={`import-status ${row.status.toLowerCase()}`}>{row.status}</span></td>
+                          <td>{row.dateAdded || "—"}</td>
+                          <td>{formatPersonName(row.firstName, row.lastName)}</td>
+                          <td>{row.provider || "—"}</td>
+                          <td>{row.tier ? `Tier ${row.tier}` : "—"}</td>
+                          <td>{row.availableDays.length > 0 ? row.availableDays.join(", ") : "Any"}</td>
+                          <td>{formatAvailableTimes(row.availableTimes)}</td>
+                          <td>{row.messages.length > 0 ? row.messages.join(" ") : "Ready to import."}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={closeImportExportModal}>Close</button>
+              <button className="btn-primary" disabled={importValidRows.length === 0} onClick={confirmImportRows}>
+                Confirm Import{importValidRows.length > 0 ? ` (${importValidRows.length})` : ""}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── CONFIRM REMOVAL MODAL ─────────────────────────────────────────── */}
       {pendingRemoval && (
         <div className="modal-backdrop" onClick={() => setPendingRemoval(null)}>
@@ -1762,6 +2031,285 @@ function App() {
       )}
     </main>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPORT / EXPORT HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseImportedWaitlistSheet(sheet: XLSX.WorkSheet): ImportPreviewRow[] {
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: "" }) as unknown[][];
+  const indexedRows = rows
+    .map((cells, index) => ({ cells, rowNumber: index + 1 }))
+    .filter(row => !isImportedSheetRowEmpty(row.cells));
+
+  if (indexedRows.length === 0) return [];
+
+  const dataRows = looksLikeImportHeaderRow(indexedRows[0].cells) ? indexedRows.slice(1) : indexedRows;
+  return dataRows
+    .filter(row => !isImportedSheetRowEmpty(row.cells))
+    .map((row, index) => parseImportedWaitlistRow(row.cells, row.rowNumber, index + 1));
+}
+
+function annotateImportedProviders(rows: ImportPreviewRow[], providers: Provider[]): ImportPreviewRow[] {
+  const existing = new Set(providers.map(p => p.name.trim().toLowerCase()));
+  const seenNew = new Set<string>();
+
+  return rows.map(row => {
+    if (row.status === "ERROR") return row;
+    const key = row.provider.trim().toLowerCase();
+    if (!key || existing.has(key)) return row;
+
+    const message = seenNew.has(key)
+      ? "New provider already listed in this import."
+      : "New provider will be added.";
+    seenNew.add(key);
+
+    return {
+      ...row,
+      status: "WARNING",
+      messages: [...row.messages, message],
+    };
+  });
+}
+
+function parseImportedWaitlistRow(cells: unknown[], rowNumber: number, id: number): ImportPreviewRow {
+  const raw = {
+    dateAdded: cellToImportText(cells[0]),
+    name:      cellToImportText(cells[1]),
+    provider:  cellToImportText(cells[2]),
+    tier:      cellToImportText(cells[3]),
+    dates:     cellToImportText(cells[5]),
+    times:     cellToImportText(cells[6]),
+  };
+
+  const messages: string[] = [];
+  const parsedDate = parseImportedDate(cells[0]);
+  if (!parsedDate) messages.push("Invalid date added.");
+
+  const parsedName = parseImportedName(raw.name);
+  if (!parsedName) messages.push("Missing name.");
+
+  const provider = raw.provider.trim();
+  if (!provider) messages.push("Missing provider.");
+
+  const tier = parseImportedTier(raw.tier);
+  if (!tier) messages.push("Tier must be 1, 2, or 3.");
+
+  const parsedDays = parseImportedDays(raw.dates);
+  if (parsedDays.error) messages.push(parsedDays.error);
+
+  const parsedTimes = parseImportedTimeRanges(raw.times);
+  if (parsedTimes.error) messages.push(parsedTimes.error);
+
+  return {
+    id,
+    rowNumber,
+    dateAdded:      parsedDate ?? "",
+    firstName:      parsedName?.firstName ?? "",
+    lastName:       parsedName?.lastName ?? raw.name.trim(),
+    provider,
+    tier:           tier ?? 1,
+    reason:         getTierReason(tier ?? 1),
+    availableDays:  parsedDays.days,
+    availableTimes: parsedTimes.ranges,
+    status:         messages.length > 0 ? "ERROR" : "READY",
+    messages,
+    raw,
+  };
+}
+
+function isImportedSheetRowEmpty(cells: unknown[]): boolean {
+  return cells.every(cell => cellToImportText(cell).trim() === "");
+}
+
+function looksLikeImportHeaderRow(cells: unknown[]): boolean {
+  const normalized = cells.map(cell => cellToImportText(cell).toLowerCase().replace(/[^a-z]/g, ""));
+  return normalized.includes("dateadded") && normalized.includes("name") && normalized.includes("provider");
+}
+
+function cellToImportText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return toDateInputValue(value);
+  return String(value).trim();
+}
+
+function parseImportedDate(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return toDateInputValue(value);
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) {
+      const date = new Date(parsed.y, parsed.m - 1, parsed.d);
+      return toDateInputValue(date);
+    }
+  }
+
+  const text = cellToImportText(value).trim();
+  const match = text.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2}|\d{4}))?$/);
+  if (!match) return null;
+
+  const month = Number(match[1]);
+  const day   = Number(match[2]);
+  let year    = match[3] ? Number(match[3]) : new Date().getFullYear();
+  if (year < 100) year += 2000;
+
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return toDateInputValue(date);
+}
+
+function parseImportedName(value: string): { firstName: string; lastName: string } | null {
+  const clean = value.trim().replace(/\s+/g, " ");
+  if (!clean) return null;
+
+  if (clean.includes(",")) {
+    const [last, ...rest] = clean.split(",");
+    return { firstName: rest.join(",").trim(), lastName: last.trim() };
+  }
+
+  const parts = clean.split(" ");
+  if (parts.length === 1) return { firstName: "", lastName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+function parseImportedTier(value: string): 1 | 2 | 3 | null {
+  const match = value.match(/[123]/);
+  if (!match) return null;
+  const tier = Number(match[0]);
+  return tier === 1 || tier === 2 || tier === 3 ? tier : null;
+}
+
+function parseImportedDays(value: string): { days: DayCode[]; error?: string } {
+  const text = value.trim();
+  if (!text || /^any$/i.test(text)) return { days: [] };
+
+  const days: DayCode[] = [];
+  const invalid: string[] = [];
+  const tokens = text.split(/[\s,;/]+/).map(t => t.trim()).filter(Boolean);
+
+  for (const token of tokens) {
+    const parsed = parseImportedDayCode(token);
+    if (!parsed) {
+      invalid.push(token);
+      continue;
+    }
+    if (!days.includes(parsed)) days.push(parsed);
+  }
+
+  return invalid.length > 0
+    ? { days, error: `Invalid date value: ${invalid.join(", ")}.` }
+    : { days };
+}
+
+function parseImportedDayCode(token: string): DayCode | null {
+  const clean = token.toLowerCase().replace(/[^a-z]/g, "");
+  if (["m", "mon", "monday"].includes(clean)) return "M";
+  if (["t", "tu", "tue", "tues", "tuesday"].includes(clean)) return "Tu";
+  if (["w", "wed", "wednesday"].includes(clean)) return "W";
+  if (["th", "thu", "thur", "thurs", "thursday"].includes(clean)) return "Th";
+  if (["f", "fri", "friday"].includes(clean)) return "F";
+  return null;
+}
+
+function parseImportedTimeRanges(value: string): { ranges: string[]; error?: string } {
+  const text = value.trim();
+  if (!text || /^any$/i.test(text)) return { ranges: [] };
+
+  const ranges: string[] = [];
+  const invalid: string[] = [];
+  const pieces = text
+    .replace(/[–—]/g, "-")
+    .replace(/\bto\b/gi, "-")
+    .split(/[,;/]+/)
+    .map(piece => piece.trim())
+    .filter(Boolean);
+
+  for (const piece of pieces) {
+    const parsed = parseSingleImportedTimeRange(piece);
+    if (!parsed) {
+      invalid.push(piece);
+      continue;
+    }
+    ranges.push(`${minutesToTimeString(parsed.start)}-${minutesToTimeString(parsed.end)}`);
+  }
+
+  return invalid.length > 0
+    ? { ranges, error: `Invalid time range: ${invalid.join(", ")}.` }
+    : { ranges };
+}
+
+function parseSingleImportedTimeRange(value: string): TimeWindow | null {
+  const match = value.match(/^(.+?)-(.+)$/);
+  if (!match) return null;
+
+  const startClock = parseImportedClock(match[1]);
+  const endClock   = parseImportedClock(match[2]);
+  if (!startClock || !endClock) return null;
+
+  let startSuffix = startClock.suffix;
+  let endSuffix   = endClock.suffix;
+
+  if (!startSuffix && endSuffix) {
+    if (endSuffix === "pm") {
+      startSuffix = startClock.hour === 12 ? "pm" : startClock.hour > endClock.hour && startClock.hour >= 8 ? "am" : "pm";
+    } else {
+      startSuffix = "am";
+    }
+  }
+
+  if (startSuffix && !endSuffix) {
+    if (startSuffix === "am" && endClock.hour < startClock.hour) endSuffix = "pm";
+    else endSuffix = startSuffix;
+  }
+
+  const start = importedClockToMinutes({ ...startClock, suffix: startSuffix });
+  const end   = importedClockToMinutes({ ...endClock,   suffix: endSuffix   });
+
+  if (start < CAL_START_MIN || end > CAL_END_MIN || end <= start || !hasOneHourSlot(start, end)) return null;
+  return { start, end };
+}
+
+function parseImportedClock(value: string): { hour: number; minute: number; suffix?: "am" | "pm" } | null {
+  const clean = value.trim().toLowerCase().replace(/\s+/g, "");
+  const suffixMatch = clean.match(/(am|pm|a|p)$/);
+  const suffix = suffixMatch ? (suffixMatch[1].startsWith("a") ? "am" : "pm") : undefined;
+  const body = suffixMatch ? clean.slice(0, -suffixMatch[1].length) : clean;
+  const match = body.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+  if (!match) return null;
+
+  const hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
+  return { hour, minute, suffix };
+}
+
+function importedClockToMinutes(clock: { hour: number; minute: number; suffix?: "am" | "pm" }): number {
+  if (!clock.suffix) return timeToMinutes(`${clock.hour}:${String(clock.minute).padStart(2, "0")}`);
+  const hour24 = clock.suffix === "pm" ? (clock.hour % 12) + 12 : clock.hour % 12;
+  return hour24 * 60 + clock.minute;
+}
+
+function formatDateForExport(dateString: string): string {
+  const date = parseLocalDate(dateString);
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+}
+
+function formatAvailableTimesForExport(times: string[]): string {
+  return times
+    .map(range => {
+      const { start, end } = parseTimeRange(range);
+      return `${formatClockForExport(start)}-${formatClockForExport(end)}`;
+    })
+    .join(",");
+}
+
+function formatClockForExport(minutes: number): string {
+  const hour24 = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const suffix = hour24 >= 12 ? "pm" : "am";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}${minute === 0 ? "" : `:${String(minute).padStart(2, "0")}`}${suffix}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2301,8 +2849,15 @@ function getNextId(items: { id: number }[]): number {
   return items.length === 0 ? 1 : Math.max(...items.map(i => i.id)) + 1;
 }
 
+function formatPersonName(firstName: string, lastName: string): string {
+  const first = firstName.trim();
+  const last  = lastName.trim();
+  if (first && last) return `${last}, ${first}`;
+  return last || first || "—";
+}
+
 function getFullName(entry: WaitlistEntry): string {
-  return `${entry.lastName}, ${entry.firstName}`;
+  return formatPersonName(entry.firstName, entry.lastName);
 }
 
 function getTierReason(tier: 1 | 2 | 3): string {
