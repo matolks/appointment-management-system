@@ -8,8 +8,10 @@ release/
 out/
 build/
 
+# Environment / secrets
 .env
 .env.*
+*.local
 
 # Logs
 logs/
@@ -19,11 +21,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
-# Environment / secrets
-.env
-.env.*
-*.local
 
 # OS files
 .DS_Store
@@ -35,9 +32,30 @@ Thumbs.db
 .idea/
 *.suo
 *.ntvs*
-*.njsproj
+*.njsproj*
 *.sln
 *.sw?
 
 # Electron generated files
 *.asar
+
+# Local SQLite/database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-journal
+*.db-wal
+*.sqlite-wal
+*.db-shm
+*.sqlite-shm
+
+# Local app data folders if accidentally created in the project
+data/
+app-data/
+userData/
+
+# Patient/import/export data
+*.xlsx
+*.xls
+*.csv

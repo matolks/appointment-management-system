@@ -78,6 +78,29 @@ button { cursor: pointer; }
 }
 .corner-action-button:hover { background: #333338; border-color: #4a4a52; }
 
+.settings-icon-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #3a3a40;
+  border-radius: 8px;
+  background: #2a2a2e;
+  color: #c0c0c6;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+
+.settings-icon-button:hover {
+  background: #333338;
+  border-color: #4a4a52;
+  color: #e8e8ea;
+  transform: rotate(18deg);
+}
+
 /* ── Calendar page ── */
 .calendar-page {
   display: grid;
@@ -1001,6 +1024,40 @@ td button:hover { background: #2a2a2e; }
 .confirm-message { margin: 0 0 10px; color: #c0c0c6; font-size: 14px; line-height: 1.55; }
 .confirm-warning { margin: 0; color: #7a5555; font-size: 12px; line-height: 1.45; }
 
+/* ── Settings modal ── */
+.settings-modal {
+  width: 520px;
+}
+
+.settings-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid #2c2c30;
+  border-radius: 10px;
+  background: #111113;
+}
+
+.settings-section h3 {
+  margin: 0 0 6px;
+  color: #c0c0c6;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-section p {
+  margin: 0;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-section .btn-danger {
+  flex-shrink: 0;
+}
+
 /* ── Modals ── */
 .modal-backdrop {
   position: fixed;
@@ -1388,6 +1445,12 @@ button:disabled:hover {
   .top-actions {
     width: 100%;
     justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .settings-section {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .import-export-actions {

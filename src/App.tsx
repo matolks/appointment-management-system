@@ -119,6 +119,24 @@ type Opening = {
   endTime: string;
 };
 
+type PersistedAppState = {
+  version: 1;
+  providers: Provider[];
+  entries: WaitlistEntry[];
+  openings: Opening[];
+  scheduledRecords: ScheduledRecord[];
+  removedRecords: RemovedRecord[];
+};
+
+declare global {
+  interface Window {
+    appStorage: {
+      load: () => Promise<PersistedAppState | null>;
+      save: (state: PersistedAppState) => Promise<boolean>;
+    };
+  }
+}
+
 // One visible slice of an opening after collision-splitting for calendar rendering
 type OpeningSegment = {
   opening: Opening;
@@ -199,6 +217,7 @@ function App() {
   const [editingEntry,    setEditingEntry]    = useState<EditingEntry    | null>(null);
   const [editingProvider, setEditingProvider] = useState<EditingProvider | null>(null);
   const [pendingRemoval,  setPendingRemoval]  = useState<PendingRemoval  | null>(null);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // Import / export modal state ───────────────────────────────────────────
   const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
@@ -217,6 +236,9 @@ function App() {
 
   const [scheduledRecords, setScheduledRecords] = useState<ScheduledRecord[]>([]);
   const [removedRecords,   setRemovedRecords]   = useState<RemovedRecord[]>([]);
+
+  // Prevents the app from overwriting saved SQLite data before the first load finishes.
+  const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
 
   // Stores the user's current start/end selection per eligible entry on the calendar panel
   const [scheduleSelections, setScheduleSelections] = useState<Record<number, ScheduleSelection>>({});
@@ -256,6 +278,58 @@ function App() {
   // ─────────────────────────────────────────────────────────────────────────
   // EFFECTS
   // ─────────────────────────────────────────────────────────────────────────
+
+  // Load saved state from SQLite when running inside Electron.
+  useEffect(() => {
+    async function loadStoredState() {
+      if (!window.appStorage) {
+        setHasLoadedStorage(true);
+        return;
+      }
+
+      try {
+        const saved = await window.appStorage.load();
+        if (saved) {
+          setProviders(saved.providers ?? []);
+          setEntries(saved.entries ?? []);
+          setOpenings(saved.openings ?? []);
+          setScheduledRecords(saved.scheduledRecords ?? []);
+          setRemovedRecords(saved.removedRecords ?? []);
+        }
+      } catch (error) {
+        console.error("Failed to load app state from SQLite:", error);
+      } finally {
+        setHasLoadedStorage(true);
+      }
+    }
+
+    loadStoredState();
+  }, []);
+
+  // Save state to SQLite after the initial load has completed.
+  useEffect(() => {
+    if (!hasLoadedStorage || !window.appStorage) return;
+
+    const stateToSave: PersistedAppState = {
+      version: 1,
+      providers,
+      entries,
+      openings,
+      scheduledRecords,
+      removedRecords,
+    };
+
+    window.appStorage.save(stateToSave).catch(error => {
+      console.error("Failed to save app state to SQLite:", error);
+    });
+  }, [
+    hasLoadedStorage,
+    providers,
+    entries,
+    openings,
+    scheduledRecords,
+    removedRecords,
+  ]);
 
   // Retention rules:
   // - Openings expire only when the opening date is at least RETENTION_DAYS in the past.
@@ -935,6 +1009,31 @@ function App() {
     setWaitlistAvailableTimeRanges([]);
   }
 
+  function resetDatabase() {
+    const confirmed = window.confirm(
+      "Reset the database? This will permanently delete all providers, openings, waitlist entries, scheduled records, and removed records.",
+    );
+    if (!confirmed) return;
+
+    setProviders([]);
+    setEntries([]);
+    setOpenings([]);
+    setScheduledRecords([]);
+    setRemovedRecords([]);
+    setScheduleSelections({});
+    setSelectedOpeningId(null);
+    setHoveredOpeningId(null);
+    setEditingOpening(null);
+    setEditingEntry(null);
+    setEditingProvider(null);
+    setPendingRemoval(null);
+    setActiveView("CALENDAR");
+    setWaitlistHistoryPanel("ACTIVE");
+    setIsActionPageOpen(false);
+    setIsSettingsModalOpen(false);
+    clearImportPreview();
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER HELPERS
   // ─────────────────────────────────────────────────────────────────────────
@@ -1005,6 +1104,27 @@ function App() {
           </button>
         </nav>
         <div className="top-actions">
+          <button
+            className="settings-icon-button"
+            title="Settings"
+            aria-label="Settings"
+            onClick={() => setIsSettingsModalOpen(true)}
+          >
+            <svg
+              aria-hidden="true"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.04a2 2 0 1 1-2.83 2.83l-.04-.04A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.06a1.7 1.7 0 0 0-.4-1.1 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.04.04a2 2 0 1 1-2.83-2.83l.04-.04A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.06a1.7 1.7 0 0 0 1.1-.4 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.04-.04a2 2 0 1 1 2.83-2.83l.04.04A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.06a1.7 1.7 0 0 0 .4 1.1 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.04-.04a2 2 0 1 1 2.83 2.83l-.04.04A1.7 1.7 0 0 0 19.4 9c.24.35.38.74.4 1.15H21a2 2 0 1 1 0 4h-.06a1.7 1.7 0 0 0-1.1.4 1.7 1.7 0 0 0-.44.45Z" />
+            </svg>
+          </button>
           <button className="corner-action-button" onClick={() => setIsImportExportModalOpen(true)}>
             Import/Export
           </button>
@@ -1776,6 +1896,27 @@ function App() {
                 Confirm Import{importValidRows.length > 0 ? ` (${importValidRows.length})` : ""}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SETTINGS MODAL ───────────────────────────────────────────────── */}
+      {isSettingsModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsSettingsModalOpen(false)}>
+          <div className="modal-box settings-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Settings</h2>
+              <button className="close-action-button" onClick={() => setIsSettingsModalOpen(false)}>×</button>
+            </div>
+            <section className="settings-section">
+              <div>
+                <h3>Reset database</h3>
+                <p>Deletes all providers, openings, waitlist entries, scheduled records, and removed records.</p>
+              </div>
+              <button className="btn-danger" onClick={resetDatabase}>
+                Reset Database
+              </button>
+            </section>
           </div>
         </div>
       )}
