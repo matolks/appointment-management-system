@@ -5,140 +5,24 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────────────────────────
-
-
-type WaitlistStatus = "WAITLISTED" | "SCHEDULED" | "REMOVED";
-type DayCode = "M" | "Tu" | "W" | "Th" | "F";
-type ViewMode = "CALENDAR" | "WAITLIST";
-type ActionMode = "OPENING" | "WAITLIST_ENTRY" | "EDIT_PROVIDERS";
-type SortField = "dateAdded" | "name" | "provider" | "tier" | "status";
-type WaitlistHistoryPanel = "ACTIVE" | "SCHEDULED" | "REMOVED";
-
-type PendingRemoval =
-  | { type: "ENTRY";            id: number; entryId?: never; title: string; message: string; confirmLabel: string }
-  | { type: "OPENING";          id: number; entryId?: never; title: string; message: string; confirmLabel: string }
-  | { type: "SCHEDULED_RECORD"; id: number; entryId: number; title: string; message: string; confirmLabel: string }
-  | { type: "REMOVED_RECORD";   id: number; entryId: number; title: string; message: string; confirmLabel: string }
-  | { type: "PROVIDER"; name: string; id?: never; entryId?: never; title: string; message: string; confirmLabel: string };
-
-type WaitlistEntry = {
-  id: number;
-  dateAdded: string;
-  firstName: string;
-  lastName: string;
-  provider: string;
-  tier: 1 | 2 | 3;
-  reason: string;
-  availableDays: DayCode[];
-  availableTimes: string[]; // "H:MM-H:MM"
-  status: WaitlistStatus;
-};
-
-type TimeRangeDraft = {
-  id: number;
-  startTime: string;
-  endTime: string;
-};
-
-type ScheduledRecord = {
-  id: number;
-  entryId: number;
-  dateScheduled: string;
-  firstName: string;
-  lastName: string;
-  provider: string;
-  tier: 1 | 2 | 3;
-  reason: string;
-  status: "SCHEDULED";
-  appointmentDate: string;
-  appointmentDay: DayCode;
-  startTime: string;
-  endTime: string;
-};
-
-type RemovedRecord = {
-  id: number;
-  entryId: number;
-  dateRemoved: string;
-  dateAdded: string;
-  firstName: string;
-  lastName: string;
-  provider: string;
-  tier: 1 | 2 | 3;
-  reason: string;
-  status: "REMOVED";
-};
-
-type ImportPreviewStatus = "READY" | "WARNING" | "ERROR";
-
-type ImportPreviewRow = {
-  id: number;
-  rowNumber: number;
-  dateAdded: string;
-  firstName: string;
-  lastName: string;
-  provider: string;
-  tier: 1 | 2 | 3;
-  reason: string;
-  availableDays: DayCode[];
-  availableTimes: string[];
-  status: ImportPreviewStatus;
-  messages: string[];
-  raw: {
-    dateAdded: string;
-    name: string;
-    provider: string;
-    tier: string;
-    dates: string;
-    times: string;
-  };
-};
-
-// For schedule start/end dropdowns
-type ScheduleSelection = {
-  startTime: string;
-  endTime: string;
-};
-
-type TimeWindow = {
-  start: number; // minutes from midnight
-  end: number;
-};
-
-type Provider = {
-  name: string;
-  color: string; // Hex color
-};
-
-type Opening = {
-  id: number;
-  provider: string;
-  date: string;      // YYYY-MM-DD
-  day: DayCode;
-  startTime: string; // Stored as "H:MM" 
-  endTime: string;
-};
-
-type PersistedAppState = {
-  version: 1;
-  providers: Provider[];
-  entries: WaitlistEntry[];
-  openings: Opening[];
-  scheduledRecords: ScheduledRecord[];
-  removedRecords: RemovedRecord[];
-};
-
-declare global {
-  interface Window {
-    appStorage: {
-      load: () => Promise<PersistedAppState | null>;
-      save: (state: PersistedAppState) => Promise<boolean>;
-    };
-  }
-}
+import type {
+  ActionMode,
+  DayCode,
+  ImportPreviewRow,
+  Opening,
+  PendingRemoval,
+  PersistedAppState,
+  Provider,
+  RemovedRecord,
+  ScheduleSelection,
+  ScheduledRecord,
+  SortField,
+  TimeRangeDraft,
+  TimeWindow,
+  ViewMode,
+  WaitlistEntry,
+  WaitlistHistoryPanel,
+} from "./types";
 
 // One visible slice of an opening after collision-splitting for calendar rendering
 type OpeningSegment = {
