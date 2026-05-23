@@ -1,73 +1,43 @@
-# React + TypeScript + Vite
+# Appointment Manager
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Appointment Manager is a desktop application for filling new appointment openings with eligible patients from a waitlist.
 
-Currently, two official plugins are available:
+## Calendar
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Providers are displayed on the left, and their openings are displayed on the calendar in the center. Clicking an opening shows eligible waitlist patients who can fill that appointment time.
 
-## React Compiler
+### Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Clear/reset the database
+- Import and export data using Excel sheets
+- Add new openings
+- Edit or remove current openings
+- Add, edit, or remove providers
+- Automatically purge openings 14 days after they have passed
 
-## Expanding the ESLint configuration
+## Waitlist
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The waitlist displays all current patients waiting for an appointment. Separate views are available for scheduled patients and removed patients, for tracking purposes.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Features
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Sort patients by date added, name, provider, or tier
+- Add, edit, or remove patients from the waitlist
+- View scheduled patients
+- View removed patients
+- Track patient status across waitlisted, scheduled, and removed sections
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Tech Stack
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- React
+- TypeScript
+- Electron
+- SQLite
+- Excel import/export with SheetJS
+- CSS
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Future Improvements
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- Send automated text messages when scheduling a patient
+- Support for military time if needed
+- Improve scheduling notifications and reminders

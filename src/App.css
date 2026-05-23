@@ -763,6 +763,23 @@ td button:hover { background: #2a2a2e; }
 }
 .field-label-block.field-grow { flex: 1; }
 
+/* Shorter date input for the Add Opening form. */
+.opening-date-field {
+  flex: 0 0 175px;
+  min-width: 125px;
+  max-width: 125px;
+}
+
+.opening-date-field input[type="date"] {
+  color-scheme: light;
+}
+
+.opening-date-field input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.8);
+  opacity: 0.9;
+  cursor: pointer;
+}
+
 .field-label-text {
   font-size: 11px;
   font-weight: 600;

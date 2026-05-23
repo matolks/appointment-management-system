@@ -1,6 +1,3 @@
-// Remove provider bug, what to do with all the people?
-// Shouldnt be warning when adding new provider
-
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
@@ -516,7 +513,7 @@ function App() {
         lastName:       row.lastName,
         provider:       providerNameByKey.get(providerKey) ?? row.provider.trim(),
         tier:           row.tier,
-        reason:         getTierReason(row.tier),
+        reason:         row.reason,
         availableDays:  row.availableDays,
         availableTimes: row.availableTimes,
         status:         "WAITLISTED",
@@ -538,7 +535,7 @@ function App() {
         Name:         formatPersonName(entry.firstName, entry.lastName),
         Provider:     entry.provider,
         Tier:         entry.tier,
-        Reason:       getTierReason(entry.tier),
+        Reason:       entry.reason,
         Dates:        entry.availableDays.join(","),
         Times:        formatAvailableTimesForExport(entry.availableTimes),
       }));
@@ -678,17 +675,30 @@ function App() {
 
   function saveEditingOpening() {
     if (!editingOpening) return;
-    if (timeToMinutes(editingOpening.endTime) <= timeToMinutes(editingOpening.startTime)) return;
+    if (timeToMinutes(editingOpening.endTime) <= timeToMinutes(editingOpening.startTime)) {
+      alert("End time must be after start time.");
+      return;
+    }
+
+    const dayCode = getDayCodeFromDate(editingOpening.date);
+    if (!dayCode) {
+      alert("Openings can only be saved on weekdays (Mon–Fri).");
+      return;
+    }
+
+    // Do not persist edit-only metadata like _original into app state / SQLite.
+    const { _original, ...cleanOpening } = editingOpening;
+
     setOpenings(prev =>
       mergeSameProviderOpenings(
-        prev.map(o => o.id === editingOpening.id
-          ? { ...editingOpening, day: getDayCodeFromDate(editingOpening.date) ?? editingOpening.day }
+        prev.map(o => o.id === cleanOpening.id
+          ? { ...cleanOpening, day: dayCode }
           : o,
         ),
-        editingOpening.id,
+        cleanOpening.id,
       ),
     );
-    setSelectedOpeningId(editingOpening.id);
+    setSelectedOpeningId(cleanOpening.id);
     setEditingOpening(null);
   }
 
@@ -704,12 +714,22 @@ function App() {
     const newName = editingProvider.name.trim();
     if (!newName) return;
 
+    const duplicateProvider = providers.some(
+      p => p.name !== oldName && p.name.trim().toLowerCase() === newName.toLowerCase(),
+    );
+    if (duplicateProvider) {
+      alert("A provider with that name already exists.");
+      return;
+    }
+
     setProviders(prev => prev.map(p => p.name === oldName ? { name: newName, color: editingProvider.color } : p));
 
-    // If the provider was renamed, update all references across openings and entries
+    // If the provider was renamed, update all references across openings, entries, and history.
     if (oldName !== newName) {
       setOpenings(prev => prev.map(o => o.provider === oldName ? { ...o, provider: newName } : o));
       setEntries(prev  => prev.map(e => e.provider === oldName ? { ...e, provider: newName } : e));
+      setScheduledRecords(prev => prev.map(r => r.provider === oldName ? { ...r, provider: newName } : r));
+      setRemovedRecords(prev   => prev.map(r => r.provider === oldName ? { ...r, provider: newName } : r));
     }
     setEditingProvider(null);
   }
@@ -762,11 +782,25 @@ function App() {
   }
 
   function requestRemoveProvider(provider: Provider) {
+    const waitlistedPatientCount = entries.filter(e => e.provider === provider.name && e.status === "WAITLISTED").length;
+    const scheduledPatientCount = scheduledRecords.filter(r => r.provider === provider.name).length;
+    const removedPatientCount = removedRecords.filter(r => r.provider === provider.name).length;
+    const totalPatientReferences = waitlistedPatientCount + scheduledPatientCount + removedPatientCount;
+
+    if (totalPatientReferences > 0) {
+      alert(
+        `Cannot remove ${provider.name} because ${totalPatientReferences} patient record(s) still reference this provider. ` +
+        `Active waitlist: ${waitlistedPatientCount}. Scheduled history: ${scheduledPatientCount}. Removed history: ${removedPatientCount}. ` +
+        "Rename the provider instead, or move/delete those patient records first.",
+      );
+      return;
+    }
+
     setPendingRemoval({
       type:         "PROVIDER",
       name:         provider.name,
       title:        "Remove provider?",
-      message:      `This will remove ${provider.name} and delete all of their current openings.`,
+      message:      `This will remove ${provider.name} and delete all of their current openings. No patient records reference this provider.`,
       confirmLabel: "Remove Provider",
     });
   }
@@ -1447,7 +1481,7 @@ function App() {
                     {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
                   </select>
                 </label>
-                <label className="field-label-block field-grow">
+                <label className="field-label-block opening-date-field">
                   <span className="field-label-text">Date</span>
                   <input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} />
                 </label>
@@ -2115,7 +2149,6 @@ function annotateImportedProviders(rows: ImportPreviewRow[], providers: Provider
 
     return {
       ...row,
-      status: "WARNING",
       messages: [...row.messages, message],
     };
   });
@@ -2127,6 +2160,7 @@ function parseImportedWaitlistRow(cells: unknown[], rowNumber: number, id: numbe
     name:      cellToImportText(cells[1]),
     provider:  cellToImportText(cells[2]),
     tier:      cellToImportText(cells[3]),
+    reason:    cellToImportText(cells[4]),
     dates:     cellToImportText(cells[5]),
     times:     cellToImportText(cells[6]),
   };
@@ -2158,7 +2192,7 @@ function parseImportedWaitlistRow(cells: unknown[], rowNumber: number, id: numbe
     lastName:       parsedName?.lastName ?? raw.name.trim(),
     provider,
     tier:           tier ?? 1,
-    reason:         getTierReason(tier ?? 1),
+    reason:         raw.reason.trim() || getTierReason(tier ?? 1),
     availableDays:  parsedDays.days,
     availableTimes: parsedTimes.ranges,
     status:         messages.length > 0 ? "ERROR" : "READY",
