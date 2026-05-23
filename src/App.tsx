@@ -1,3 +1,6 @@
+// Remove provider bug, what to do with all the people?
+// Shouldnt be warning when adding new provider
+
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
@@ -332,35 +335,35 @@ function App() {
   ]);
 
   // Retention rules:
-  // - Openings expire only when the opening date is at least RETENTION_DAYS in the past.
-  // - Scheduled records expire only when the appointment date is at least RETENTION_DAYS in the past.
-  // - Removed records expire when the removed date is at least RETENTION_DAYS in the past.
+  // - Openings expire only when the opening date is more than RETENTION_DAYS in the past.
+  // - Scheduled records expire only when the appointment date is more than RETENTION_DAYS in the past.
+  // - Removed records expire when the removed date is more than RETENTION_DAYS in the past.
   // Entries whose scheduled/removed records expire are also removed from the backing entries array.
   useEffect(() => {
     const today = startOfLocalDay(new Date());
 
     const staleScheduledEntryIds = new Set(
       scheduledRecords
-        .filter(r => isDateAtLeastRetentionDaysOld(r.appointmentDate, today))
+        .filter(r => isDateOlderThanRetentionDays(r.appointmentDate, today))
         .map(r => r.entryId),
     );
 
     const staleRemovedEntryIds = new Set(
       removedRecords
-        .filter(r => isDateAtLeastRetentionDaysOld(r.dateRemoved, today))
+        .filter(r => isDateOlderThanRetentionDays(r.dateRemoved, today))
         .map(r => r.entryId),
     );
 
     setOpenings(prev =>
-      filterWithoutStateChange(prev, o => !isDateAtLeastRetentionDaysOld(o.date, today)),
+      filterWithoutStateChange(prev, o => !isDateOlderThanRetentionDays(o.date, today)),
     );
 
     setScheduledRecords(prev =>
-      filterWithoutStateChange(prev, r => !isDateAtLeastRetentionDaysOld(r.appointmentDate, today)),
+      filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.appointmentDate, today)),
     );
 
     setRemovedRecords(prev =>
-      filterWithoutStateChange(prev, r => !isDateAtLeastRetentionDaysOld(r.dateRemoved, today)),
+      filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.dateRemoved, today)),
     );
 
     if (staleScheduledEntryIds.size > 0 || staleRemovedEntryIds.size > 0) {
@@ -726,7 +729,10 @@ function App() {
 
   function addOpening() {
     if (!openingProvider || !openingDate || !openingStartTime || !openingEndTime) return;
-    if (timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)) return;
+    if (timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)) {
+      alert("End time must be after start time.");
+      return;
+    }
     // Weekends are outside the calendar's M–F range; warn and abort
     const dayCode = getDayCodeFromDate(openingDate);
     if (!dayCode) {
@@ -1031,6 +1037,23 @@ function App() {
     setWaitlistHistoryPanel("ACTIVE");
     setIsActionPageOpen(false);
     setIsSettingsModalOpen(false);
+    // Reset opening form state
+    setOpeningProvider("");
+    setOpeningDate(getDefaultOpeningDate());
+    setOpeningStartTime("8:00");
+    setOpeningEndTime("9:00");
+    // Reset waitlist form state
+    setWaitlistDateAdded(getTodayDateInputValue());
+    setWaitlistFirstName("");
+    setWaitlistLastName("");
+    setWaitlistProvider("");
+    setWaitlistTier(1);
+    setWaitlistReason(getTierReason(1));
+    setWaitlistAvailableDays([]);
+    setWaitlistAvailableTimeRanges([]);
+    // Reset provider form state
+    setProviderName("");
+    setProviderColor(DEFAULT_PROVIDER_COLOR);
     clearImportPreview();
   }
 
@@ -2359,10 +2382,11 @@ function parseImportedTimeRanges(value: string): { ranges: string[]; error?: str
 
   const ranges: string[] = [];
   const invalid: string[] = [];
+  // Split on commas or semicolons only; avoid splitting on "/" which can appear in time notations
   const pieces = text
     .replace(/[–—]/g, "-")
     .replace(/\bto\b/gi, "-")
-    .split(/[,;/]+/)
+    .split(/[,;]+/)
     .map(piece => piece.trim())
     .filter(Boolean);
 
@@ -2501,10 +2525,14 @@ function moveDateByDays(dateString: string, days: number): string {
   return toDateInputValue(date);
 }
 
-function isDateAtLeastRetentionDaysOld(dateString: string, today: Date): boolean {
+/**
+ * Returns true only if the date is strictly more than RETENTION_DAYS old
+ * (i.e. the cutoff day itself is NOT purged).
+ */
+function isDateOlderThanRetentionDays(dateString: string, today: Date): boolean {
   const cutoff = startOfLocalDay(today);
   cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
-  return parseLocalDate(dateString).getTime() <= cutoff.getTime();
+  return parseLocalDate(dateString).getTime() < cutoff.getTime();
 }
 
 function isPastDate(dateString: string, todayDateString: string): boolean {
@@ -2693,6 +2721,8 @@ function normalizeScheduleSelection(
   changedField: "startTime" | "endTime",
   windows: TimeWindow[],
 ): ScheduleSelection {
+  if (windows.length === 0) return getDefaultScheduleSelection(windows);
+
   const startOptions = getScheduleStartOptions(windows);
   if (startOptions.length === 0) return getDefaultScheduleSelection(windows);
 
@@ -2701,8 +2731,11 @@ function normalizeScheduleSelection(
 
   let endOptions = getScheduleEndOptions(windows, startTime);
   if (endOptions.length === 0) {
+    // Try the first valid start option instead
     startTime  = startOptions[0];
     endOptions = getScheduleEndOptions(windows, startTime);
+    // If still empty (shouldn't happen with valid windows), fall back to default
+    if (endOptions.length === 0) return getDefaultScheduleSelection(windows);
   }
 
   let endTime = selection.endTime;
@@ -2784,7 +2817,9 @@ function splitOpeningForAppointment(
 ): Opening[] {
   const apptStart = timeToMinutes(appointmentStartTime);
   const apptEnd   = timeToMinutes(appointmentEndTime);
-  let nextId      = getNextId(openings);
+
+  // Compute the next available ID from the full list before any modifications
+  let nextId = getNextId(openings);
 
   const split = openings.flatMap(opening => {
     if (opening.id !== openingId) return [opening];
@@ -2986,8 +3021,10 @@ function filterWithoutStateChange<T>(items: T[], keep: (item: T) => boolean): T[
   return filtered.length === items.length ? items : filtered;
 }
 
+/** Returns the next available integer ID, safe for any array size. */
 function getNextId(items: { id: number }[]): number {
-  return items.length === 0 ? 1 : Math.max(...items.map(i => i.id)) + 1;
+  if (items.length === 0) return 1;
+  return items.reduce((max, item) => item.id > max ? item.id : max, 0) + 1;
 }
 
 function formatPersonName(firstName: string, lastName: string): string {
