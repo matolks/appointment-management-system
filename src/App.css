@@ -104,7 +104,7 @@ button { cursor: pointer; }
 /* ── Calendar page ── */
 .calendar-page {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr) 420px;
+  grid-template-columns: 1fr minmax(0, 6.5fr) 3.5fr;
   gap: 20px;
   padding: 20px 24px;
   width: 100%;
@@ -289,6 +289,48 @@ button { cursor: pointer; }
   border-bottom: 1px solid #2c2c30;
   background: #1e1e21;
 }
+
+.day-header.today-header {
+  position: relative;
+  background: #232438;
+  border-bottom-color: #5566aa;
+}
+
+.day-header.today-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #8899ff;
+}
+
+.day-header.today-header span,
+.day-header.today-header strong {
+  color: #e8e8ea;
+}
+
+.day-header.today-header em {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8899ff;
+  background: #111113;
+  border: 1px solid #3a3d6a;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.today-column .day-body {
+  background: rgba(88, 119, 255, 0.035);
+}
+
 .day-header span {
   display: block;
   font-size: 11px;
@@ -555,16 +597,32 @@ button { cursor: pointer; }
   border: 1px solid #2c2c30;
   border-radius: 8px;
   display: grid;
-  gap: 5px;
+  gap: 6px;
   transition: border-color 0.15s;
 }
-.eligible-card:hover { border-color: #3a3a42; }
+
+.eligible-card:hover {
+  border-color: #3a3a42;
+}
 
 .eligible-card-top {
   display: grid;
-  grid-template-columns: minmax(0,1fr) auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 8px;
+}
+
+.eligible-name-block {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.eligible-name-row {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .eligible-patient-name {
@@ -578,25 +636,26 @@ button { cursor: pointer; }
   color: #e8e8ea;
 }
 
-.eligible-card-middle {
-  display: grid;
-  grid-template-columns: minmax(0,1fr) auto;
-  align-items: center;
-  gap: 8px;
+.eligible-date-added {
+  flex: 0 0 auto;
+  color: #666;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.eligible-reason, .eligible-availability {
+.eligible-availability {
   margin: 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #888;
-  font-size: 12px;
+  color: #666;
+  font-size: 11px;
 }
-.eligible-availability { color: #666; font-size: 11px; }
 
 .tier-badge {
+  width: fit-content;
   display: inline-block;
   font-size: 10px;
   font-weight: 600;
@@ -605,9 +664,21 @@ button { cursor: pointer; }
   background: #2a2a2e;
   color: #aaa;
 }
-.tier-badge.tier-1 { background: #2a1f1f; color: #f07070; }
-.tier-badge.tier-2 { background: #221f12; color: #d4a644; }
-.tier-badge.tier-3 { background: #1a2418; color: #6db870; }
+
+.tier-badge.tier-1 {
+  background: #2a1f1f;
+  color: #f07070;
+}
+
+.tier-badge.tier-2 {
+  background: #221f12;
+  color: #d4a644;
+}
+
+.tier-badge.tier-3 {
+  background: #1a2418;
+  color: #6db870;
+}
 
 .eligible-schedule-button {
   border: 1px solid #4a774d;
@@ -619,7 +690,11 @@ button { cursor: pointer; }
   font-weight: 500;
   transition: background 0.15s, border-color 0.15s;
 }
-.eligible-schedule-button:hover { background: rgb(42, 104, 60); border-color: rgb(102, 168, 87); }
+
+.eligible-schedule-button:hover {
+  background: rgb(42, 104, 60);
+  border-color: rgb(102, 168, 87);
+}
 
 /* ── Waitlist page ── */
 .waitlist-page {

@@ -1,3 +1,7 @@
+// how much time is an appointment (if it ranges what is it) - nick
+// The day is 8-6 correct - nick
+// search for name on waitlist
+
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
@@ -1122,14 +1126,16 @@ function App() {
 
             <div className="calendar-grid">
               {weekDates.map(day => {
-                const dayOpenings    = openings.filter(o => o.date === day.dateString);
+                const dayOpenings     = openings.filter(o => o.date === day.dateString);
                 const openingSegments = buildOpeningSegments(dayOpenings);
+                const isToday         = day.dateString === todayDateString;
 
                 return (
-                  <div className="day-column" key={day.dateString}>
-                    <div className="day-header">
+                  <div className={["day-column", isToday ? "today-column" : ""].join(" ")} key={day.dateString}>
+                    <div className={["day-header", isToday ? "today-header" : ""].join(" ")}>
                       <span>{day.label}</span>
                       <strong>{day.date.getDate()}</strong>
+                      {isToday && <em>Today</em>}
                     </div>
 
                     <div className="day-body">
@@ -1273,44 +1279,85 @@ function App() {
                       const endOptions   = getScheduleEndOptions(windows, selection.startTime);
 
                       return (
-                        <article className="eligible-card" key={entry.id}>
-                          <div className="eligible-card-top">
-                            <h4 className="eligible-patient-name">{getFullName(entry)}</h4>
-                            <span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span>
-                          </div>
-                          <div className="eligible-card-middle">
-                            <p className="eligible-reason">{entry.reason}</p>
-                            <button
-                              className="eligible-schedule-button"
-                              onClick={() => scheduleEntryForSelectedOpening(entry.id, selection.startTime, selection.endTime)}
-                            >
-                              Schedule
-                            </button>
-                          </div>
-                          <div className="eligible-schedule-row">
-                            <label>
-                              <span>Start</span>
-                              <select
-                                value={selection.startTime}
-                                onChange={e => updateScheduleSelection(entry.id, "startTime", e.target.value, entry, selectedOpening)}
-                              >
-                                {startOptions.map(t => <option key={t} value={t}>{formatDisplayTime(t)}</option>)}
-                              </select>
-                            </label>
-                            <label>
-                              <span>End</span>
-                              <select
-                                value={selection.endTime}
-                                onChange={e => updateScheduleSelection(entry.id, "endTime", e.target.value, entry, selectedOpening)}
-                              >
-                                {endOptions.map(t => <option key={t} value={t}>{formatDisplayTime(t)}</option>)}
-                              </select>
-                            </label>
-                          </div>
-                          <p className="eligible-availability">
-                            Available: {formatAvailability(entry.availableDays, entry.availableTimes)}
-                          </p>
-                        </article>
+<article className="eligible-card" key={entry.id}>
+  <div className="eligible-card-top">
+    <div className="eligible-name-block">
+      <div className="eligible-name-row">
+        <h4 className="eligible-patient-name">{getFullName(entry)}</h4>
+        <span className="eligible-date-added">
+          Added {formatDateForExport(entry.dateAdded)}
+        </span>
+      </div>
+
+      <span className={`tier-badge tier-${entry.tier}`}>
+        Tier {entry.tier}
+      </span>
+    </div>
+
+    <button
+      className="eligible-schedule-button"
+      onClick={() =>
+        scheduleEntryForSelectedOpening(
+          entry.id,
+          selection.startTime,
+          selection.endTime
+        )
+      }
+    >
+      Schedule
+    </button>
+  </div>
+
+  <div className="eligible-schedule-row">
+    <label>
+      <span>Start</span>
+      <select
+        value={selection.startTime}
+        onChange={e =>
+          updateScheduleSelection(
+            entry.id,
+            "startTime",
+            e.target.value,
+            entry,
+            selectedOpening
+          )
+        }
+      >
+        {startOptions.map(t => (
+          <option key={t} value={t}>
+            {formatDisplayTime(t)}
+          </option>
+        ))}
+      </select>
+    </label>
+
+    <label>
+      <span>End</span>
+      <select
+        value={selection.endTime}
+        onChange={e =>
+          updateScheduleSelection(
+            entry.id,
+            "endTime",
+            e.target.value,
+            entry,
+            selectedOpening
+          )
+        }
+      >
+        {endOptions.map(t => (
+          <option key={t} value={t}>
+            {formatDisplayTime(t)}
+          </option>
+        ))}
+      </select>
+    </label>
+  </div>
+
+  <p className="eligible-availability">
+    Available: {formatAvailability(entry.availableDays, entry.availableTimes)}
+  </p>
+</article>
                       );
                     })}
                   </div>
@@ -1468,9 +1515,8 @@ function App() {
               <div className="action-header-row">
                 <div>
                   <h1 className="action-page-title">Add Opening</h1>
-                  <p className="action-page-subtitle">Schedule a new provider availability block</p>
                 </div>
-                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>×</button>
+                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
               </div>
 
               <div className="form-section-label">Opening details</div>
@@ -1555,7 +1601,7 @@ function App() {
             <>
               <div className="action-header-row">
                 <div><h1 className="action-page-title">Edit Providers</h1></div>
-                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>×</button>
+                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
               </div>
 
               <div className="form-section-label">Add provider</div>
@@ -1616,14 +1662,13 @@ function App() {
               <div className="action-header-row">
                 <div>
                   <h1 className="action-page-title">Add to Waitlist</h1>
-                  <p className="action-page-subtitle">Register a new patient for provider availability</p>
                 </div>
-                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>×</button>
+                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
               </div>
 
               <div className="form-section-label">Patient</div>
               <div className="form-row" style={{ marginBottom: 16 }}>
-                <label className="field-label-block">
+                <label className="field-label-block opening-date-field">
                   <span className="field-label-text">Date added</span>
                   <input type="date" value={waitlistDateAdded} onChange={e => setWaitlistDateAdded(e.target.value)} />
                 </label>
@@ -1698,7 +1743,7 @@ function App() {
                   <button className="mini-add-button" onClick={addWaitlistAvailableTimeRange}>+ Add time range</button>
                 </div>
                 {waitlistAvailableTimeRanges.length === 0 ? (
-                  <p className="field-hint">No time ranges selected — any time.</p>
+                  <p className="field-hint">No time ranges inputted to indicate any time.</p>
                 ) : (
                   <div className="time-range-list">
                     {waitlistAvailableTimeRanges.map(range => (
@@ -1720,7 +1765,6 @@ function App() {
                     ))}
                   </div>
                 )}
-                <p className="field-hint">Patients need at least a 1-hour overlap with an opening to appear eligible.</p>
               </div>
 
               <div className="form-submit-row">
@@ -1741,7 +1785,7 @@ function App() {
                 <h2 className="modal-title">Import / Export Waitlist</h2>
                 <p className="modal-subtitle">Expected columns: Date added, Name, Provider, Tier, Reason, Dates, Times.</p>
               </div>
-              <button className="close-action-button" onClick={closeImportExportModal}>×</button>
+              <button className="close-action-button" onClick={closeImportExportModal}>x</button>
             </div>
 
             <input
@@ -1773,7 +1817,7 @@ function App() {
               <div className="export-card">
                 <div>
                   <h3>Export active waitlist</h3>
-                  <p>Downloads the current waitlisted patients in the same import format.</p>
+                  <p>Downloads the current waitlisted patients.</p>
                 </div>
                 <button className="btn-primary" onClick={exportWaitlistToExcel}>
                   Export Excel
@@ -1847,7 +1891,8 @@ function App() {
           <div className="modal-box settings-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Settings</h2>
-              <button className="close-action-button" onClick={() => setIsSettingsModalOpen(false)}>×</button>
+              <button className="close-action-button" onClick={() => setIsSettingsModalOpen(false)}>x
+              </button>
             </div>
             <section className="settings-section">
               <div>
@@ -1868,7 +1913,7 @@ function App() {
           <div className="modal-box confirm-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{pendingRemoval.title}</h2>
-              <button className="close-action-button" onClick={() => setPendingRemoval(null)}>×</button>
+              <button className="close-action-button" onClick={() => setPendingRemoval(null)}>x</button>
             </div>
             <p className="confirm-message">{pendingRemoval.message}</p>
             <div className="modal-footer">
@@ -1885,7 +1930,7 @@ function App() {
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Edit Opening</h2>
-              <button className="close-action-button" onClick={() => setEditingOpening(null)}>×</button>
+              <button className="close-action-button" onClick={() => setEditingOpening(null)}>x</button>
             </div>
             <div className="form-row" style={{ marginBottom: 14 }}>
               <label className="field-label-block field-grow">
@@ -1897,7 +1942,7 @@ function App() {
                   {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
                 </select>
               </label>
-              <label className="field-label-block field-grow">
+              <label className="field-label-block opening-date-field">
                 <span className="field-label-text">Date</span>
                 <input
                   type="date"
@@ -1942,11 +1987,11 @@ function App() {
           <div className="modal-box modal-wide" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Edit Waitlist Entry</h2>
-              <button className="close-action-button" onClick={() => setEditingEntry(null)}>×</button>
+              <button className="close-action-button" onClick={() => setEditingEntry(null)}>x</button>
             </div>
             <div className="form-section-label">Patient</div>
             <div className="form-row" style={{ marginBottom: 14 }}>
-              <label className="field-label-block">
+              <label className="field-label-block opening-date-field">
                 <span className="field-label-text">Date added</span>
                 <input
                   type="date"
@@ -2120,17 +2165,32 @@ function App() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function parseImportedWaitlistSheet(sheet: XLSX.WorkSheet): ImportPreviewRow[] {
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: "" }) as unknown[][];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    raw: true,
+    defval: "",
+  }) as unknown[][];
+
   const indexedRows = rows
     .map((cells, index) => ({ cells, rowNumber: index + 1 }))
     .filter(row => !isImportedSheetRowEmpty(row.cells));
 
   if (indexedRows.length === 0) return [];
 
-  const dataRows = looksLikeImportHeaderRow(indexedRows[0].cells) ? indexedRows.slice(1) : indexedRows;
+  const firstRowIsHeader = looksLikeImportHeaderRow(indexedRows[0].cells);
+
+  if (!firstRowIsHeader) {
+    return indexedRows
+      .filter(row => !isImportedSheetRowEmpty(row.cells))
+      .map((row, index) => parseImportedWaitlistRowFromCells(row.cells, row.rowNumber, index + 1));
+  }
+
+  const headerMap = buildImportHeaderMap(indexedRows[0].cells);
+  const dataRows = indexedRows.slice(1);
+
   return dataRows
     .filter(row => !isImportedSheetRowEmpty(row.cells))
-    .map((row, index) => parseImportedWaitlistRow(row.cells, row.rowNumber, index + 1));
+    .map((row, index) => parseImportedWaitlistRowFromHeaderMap(row.cells, headerMap, row.rowNumber, index + 1));
 }
 
 function annotateImportedProviders(rows: ImportPreviewRow[], providers: Provider[]): ImportPreviewRow[] {
@@ -2154,19 +2214,69 @@ function annotateImportedProviders(rows: ImportPreviewRow[], providers: Provider
   });
 }
 
-function parseImportedWaitlistRow(cells: unknown[], rowNumber: number, id: number): ImportPreviewRow {
+function parseImportedWaitlistRowFromHeaderMap(
+  cells: unknown[],
+  headerMap: Map<string, number>,
+  rowNumber: number,
+  id: number,
+): ImportPreviewRow {
+  const getCell = (...names: string[]) => {
+    for (const name of names) {
+      const index = headerMap.get(normalizeImportHeader(name));
+      if (index !== undefined) return cells[index];
+    }
+    return "";
+  };
+
+  return parseImportedWaitlistRowFromValues({
+    dateAdded: getCell("dateadded", "date"),
+    name:      getCell("name", "patient", "patientname"),
+    provider:  getCell("provider", "doctor"),
+    tier:      getCell("tier", "priority", "prioritytier"),
+    reason:    getCell("reason", "notes"),
+    dates:     getCell("dates", "availabledays", "days"),
+    times:     getCell("times", "availabletimes", "availability", "time"),
+  }, rowNumber, id);
+}
+
+function parseImportedWaitlistRowFromCells(cells: unknown[], rowNumber: number, id: number): ImportPreviewRow {
+  return parseImportedWaitlistRowFromValues({
+    dateAdded: cells[0],
+    name:      cells[1],
+    provider:  cells[2],
+    tier:      cells[3],
+    reason:    cells[4],
+    dates:     cells[5],
+    times:     cells[6],
+  }, rowNumber, id);
+}
+
+function parseImportedWaitlistRowFromValues(
+  values: {
+    dateAdded: unknown;
+    name: unknown;
+    provider: unknown;
+    tier: unknown;
+    reason: unknown;
+    dates: unknown;
+    times: unknown;
+  },
+  rowNumber: number,
+  id: number,
+): ImportPreviewRow {
   const raw = {
-    dateAdded: cellToImportText(cells[0]),
-    name:      cellToImportText(cells[1]),
-    provider:  cellToImportText(cells[2]),
-    tier:      cellToImportText(cells[3]),
-    reason:    cellToImportText(cells[4]),
-    dates:     cellToImportText(cells[5]),
-    times:     cellToImportText(cells[6]),
+    dateAdded: cellToImportText(values.dateAdded),
+    name:      cellToImportText(values.name),
+    provider:  cellToImportText(values.provider),
+    tier:      cellToImportText(values.tier),
+    reason:    cellToImportText(values.reason),
+    dates:     cellToImportText(values.dates),
+    times:     cellToImportText(values.times),
   };
 
   const messages: string[] = [];
-  const parsedDate = parseImportedDate(cells[0]);
+
+  const parsedDate = parseImportedDate(values.dateAdded);
   if (!parsedDate) messages.push("Invalid date added.");
 
   const parsedName = parseImportedName(raw.name);
@@ -2201,13 +2311,32 @@ function parseImportedWaitlistRow(cells: unknown[], rowNumber: number, id: numbe
   };
 }
 
+function buildImportHeaderMap(headerCells: unknown[]): Map<string, number> {
+  const map = new Map<string, number>();
+
+  headerCells.forEach((cell, index) => {
+    const normalized = normalizeImportHeader(cellToImportText(cell));
+    if (normalized) map.set(normalized, index);
+  });
+
+  return map;
+}
+
+function normalizeImportHeader(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function isImportedSheetRowEmpty(cells: unknown[]): boolean {
   return cells.every(cell => cellToImportText(cell).trim() === "");
 }
 
 function looksLikeImportHeaderRow(cells: unknown[]): boolean {
-  const normalized = cells.map(cell => cellToImportText(cell).toLowerCase().replace(/[^a-z]/g, ""));
-  return normalized.includes("dateadded") && normalized.includes("name") && normalized.includes("provider");
+  const normalized = cells.map(cell => normalizeImportHeader(cellToImportText(cell)));
+  return (
+    normalized.includes("dateadded") &&
+    normalized.includes("name") &&
+    normalized.includes("provider")
+  );
 }
 
 function cellToImportText(value: unknown): string {
