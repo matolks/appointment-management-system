@@ -824,6 +824,33 @@ td button {
 }
 td button:hover { background: #2a2a2e; border-color: #3a3a40; }
 
+.reason-cell {
+  max-width: 260px;
+}
+
+td .reason-preview-button {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #c0c0c6;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+td .reason-preview-button:hover {
+  background: transparent;
+  border-color: transparent;
+  color: #e8e8ea;
+  text-decoration: underline;
+}
+
 /* Waitlist section search */
 .section-search-row {
   display: flex;
@@ -1324,6 +1351,24 @@ td button:hover { background: #2a2a2e; border-color: #3a3a40; }
 }
 
 .modal-box.modal-wide { width: 680px; }
+
+.reason-modal {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.reason-modal-text {
+  padding: 14px 16px;
+  border: 1px solid #2c2c30;
+  border-radius: 10px;
+  background: #111113;
+  color: #c0c0c6;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 50vh;
+  overflow-y: auto;
+}
 
 @keyframes slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 

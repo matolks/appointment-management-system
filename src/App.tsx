@@ -2,7 +2,6 @@
 // The day is 8-6 correct - nick
 // is name in 1 column
 
-// should be able to add openings to the past nor schedule people in the past (maybe just have are you sure pop up instead of blocking it incase of tracking purposes)
 // When adding available times to person on waitlist, it will store the same or orverlapping times
 // Really long reason will break the thing
 
@@ -117,6 +116,7 @@ function App(){
   const [editingEntry, setEditingEntry] = useState<EditingEntry    | null>(null);
   const [editingProvider, setEditingProvider] = useState<EditingProvider | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval  | null>(null);
+  const [reasonPreview, setReasonPreview] = useState<{ title: string; text: string } | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // Import / export modal state 
@@ -202,6 +202,7 @@ function App(){
     setEditingEntry(null);
     setEditingProvider(null);
     setPendingRemoval(null);
+    setReasonPreview(null);
     setActiveView("CALENDAR");
     setWaitlistHistoryPanel("ACTIVE");
     setIsActionPageOpen(false);
@@ -243,6 +244,7 @@ function App(){
     setEditingEntry(null);
     setEditingProvider(null);
     setPendingRemoval(null);
+    setReasonPreview(null);
     setActiveView("CALENDAR");
     setWaitlistHistoryPanel("ACTIVE");
     setIsActionPageOpen(false);
@@ -633,12 +635,18 @@ function App(){
     const openingStart = timeToMinutes(selectedOpening.startTime);
     const openingEnd = timeToMinutes(selectedOpening.endTime);
 
-    // Guard: appointment must be at least 1 hour and fully within the openin---------------------------------------------
+    // Guard: appointment must be at least 1 hour and fully within the opening.
     if(apptEnd - apptStart < 60) return;
     if(apptStart < openingStart || apptEnd > openingEnd) return;
     if(!getEligibleScheduleWindows(entry, selectedOpening).some(
       w => apptStart >= w.start && apptEnd <= w.end)
     ) return;
+    if(isAppointmentStartInPast(selectedOpening.date, appointmentStartTime)){
+      const confirmed = window.confirm(
+        `This appointment is in the past: ${formatDisplayDate(selectedOpening.date)} from ${formatTimeRange(appointmentStartTime, appointmentEndTime)}. Continue scheduling it for tracking purposes?`,
+      );
+      if(!confirmed) return;
+    }
     setScheduledRecords(prev => [
       {
         id: getNextId(prev),
@@ -683,6 +691,12 @@ function App(){
     if(!dayCode){
       alert("Openings can only be added on weekdays (Mon–Fri).");
       return;
+    }
+    if(isAppointmentStartInPast(openingDate, openingStartTime)){
+      const confirmed = window.confirm(
+        `This opening is in the past: ${formatDisplayDate(openingDate)} from ${formatTimeRange(openingStartTime, openingEndTime)}. Continue adding it for tracking purposes?`,
+      );
+      if(!confirmed) return;
     }
     const nextOpening: Opening = {
       id: getNextId(openings),
@@ -744,6 +758,12 @@ function App(){
       alert("Openings can only be saved on weekdays (Mon–Fri).");
       return;
     }
+    if(isAppointmentStartInPast(editingOpening.date, editingOpening.startTime)){
+      const confirmed = window.confirm(
+        `This opening is in the past: ${formatDisplayDate(editingOpening.date)} from ${formatTimeRange(editingOpening.startTime, editingOpening.endTime)}. Continue saving it for tracking purposes?`,
+      );
+      if(!confirmed) return;
+    }
     // Do not persist edit-only metadata like _original into app state / SQLite.
     const { _original, ...cleanOpening } = editingOpening;
     setOpenings(prev =>
@@ -761,7 +781,14 @@ function App(){
 
   function saveEditingEntry(){
     if(!editingEntry) return;
-    setEntries(prev => prev.map(e => e.id === editingEntry.id ? editingEntry : e));
+    const normalizedEntry: WaitlistEntry = {
+      ...editingEntry,
+      reason: editingEntry.reason.trim(),
+      availableTimes: serializeTimeRangeDrafts(
+        editingEntry.availableTimes.map((range, index) => rangeToDraft(range, index + 1)),
+      ),
+    };
+    setEntries(prev => prev.map(e => e.id === normalizedEntry.id ? normalizedEntry : e));
     setEditingEntry(null);
   }
 
@@ -920,10 +947,10 @@ function App(){
   }
 
   function addWaitlistAvailableTimeRange(){
-    setWaitlistAvailableTimeRanges(prev => [
-      ...prev,
-      { id: getNextTimeRangeId(prev), startTime: "9:00", endTime: "10:00" },
-    ]);
+    setWaitlistAvailableTimeRanges(prev => {
+      const nextRange = getNextAvailableTimeRangeDraft(prev);
+      return nextRange ? [...prev, nextRange] : prev;
+    });
   }
 
   function updateWaitlistAvailableTimeRange(id: number, field: "startTime" | "endTime", value: string){
@@ -939,7 +966,13 @@ function App(){
   // Mirror of the above for the edit-entry modal
   function addEditingEntryTimeRange(){
     if(!editingEntry) return;
-    setEditingEntry({ ...editingEntry, availableTimes: [...editingEntry.availableTimes, "9:00-10:00"] });
+    const drafts = editingEntry.availableTimes.map((range, index) => rangeToDraft(range, index + 1));
+    const nextRange = getNextAvailableTimeRangeDraft(drafts);
+    if(!nextRange) return;
+    setEditingEntry({
+      ...editingEntry,
+      availableTimes: serializeTimeRangeDrafts([...drafts, nextRange]),
+    });
   }
 
   function updateEditingEntryTimeRange(index: number, field: "startTime" | "endTime", value: string){
@@ -1139,6 +1172,20 @@ function App(){
   // RENDER HELPERS
   // ─────────────────────────────────────────────────────────────────────────
 
+  function renderReasonCell(reason: string, title = "Reason"){
+    const text = reason.trim() || "—";
+    return (
+      <button
+        type="button"
+        className="reason-preview-button"
+        title={text}
+        onClick={() => setReasonPreview({ title, text })}
+      >
+        {text}
+      </button>
+    );
+  }
+
   /* Shared table for both "Scheduled" and "Past Scheduled" sections. */
   function renderScheduledRecordsTable(records: ScheduledRecord[]){
     return (
@@ -1166,7 +1213,7 @@ function App(){
               <td>{record.status}</td>
               <td>{record.appointmentDay} · {formatDisplayDate(record.appointmentDate)}</td>
               <td>{formatTimeRange(record.startTime, record.endTime)}</td>
-              <td>{record.reason}</td>
+              <td className="reason-cell">{renderReasonCell(record.reason, `Reason for ${formatPersonName(record.firstName, record.lastName)}`)}</td>
               <td>
                 <button className="remove-button" onClick={() => requestDeleteScheduledRecord(record)}>
                   Delete
@@ -1575,7 +1622,7 @@ function App(){
                         <td>{getFullName(entry)}</td>
                         <td>{entry.provider}</td>
                         <td><span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span></td>
-                        <td>{entry.reason}</td>
+                        <td className="reason-cell">{renderReasonCell(entry.reason, `Reason for ${getFullName(entry)}`)}</td>
                         <td>{entry.availableDays.join(", ") || "Any"}</td>
                         <td>{formatAvailableTimes(entry.availableTimes)}</td>
                         <td>{entry.status}</td>
@@ -1685,7 +1732,7 @@ function App(){
                           <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
                           <td>{record.status}</td>
                           <td>{record.dateAdded}</td>
-                          <td>{record.reason}</td>
+                          <td className="reason-cell">{renderReasonCell(record.reason, `Reason for ${formatPersonName(record.firstName, record.lastName)}`)}</td>
                           <td>
                             <button className="remove-button" onClick={() => requestDeleteRemovedRecord(record)}>
                               Delete
@@ -2040,7 +2087,7 @@ function App(){
                           <td>{row.tier ? `Tier ${row.tier}` : "—"}</td>
                           <td>{row.availableDays.length > 0 ? row.availableDays.join(", ") : "Any"}</td>
                           <td>{formatAvailableTimes(row.availableTimes)}</td>
-                          <td>{row.messages.length > 0 ? row.messages.join(" ") : "Ready to import."}</td>
+                          <td className="reason-cell">{row.messages.length > 0 ? row.messages.join(" ") : "Ready to import."}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2156,6 +2203,20 @@ function App(){
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setPendingRemoval(null)}>Cancel</button>
               <button className="btn-danger"    onClick={confirmPendingRemoval}>{pendingRemoval.confirmLabel}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {reasonPreview && (
+        <div className="modal-backdrop" onClick={() => setReasonPreview(null)}>
+          <div className="modal-box reason-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">{reasonPreview.title}</h2>
+              <button className="close-action-button" onClick={() => setReasonPreview(null)}>x</button>
+            </div>
+            <div className="reason-modal-text">{reasonPreview.text}</div>
+            <div className="modal-footer">
+              <button className="btn-primary" onClick={() => setReasonPreview(null)}>Close</button>
             </div>
           </div>
         </div>
@@ -2648,9 +2709,10 @@ for (const piece of pieces){
   }
   ranges.push(`${minutesToTimeString(parsed.start)}-${minutesToTimeString(parsed.end)}`);
 }
+const normalizedRanges = normalizeSerializedTimeRanges(ranges);
 return invalid.length > 0
-  ? { ranges, error: `Invalid time range: ${invalid.join(", ")}.` }
-  : { ranges };
+  ? { ranges: normalizedRanges, error: `Invalid time range: ${invalid.join(", ")}.` }
+  : { ranges: normalizedRanges };
 }
 
 function parseSingleImportedTimeRange(value: string): TimeWindow | null {
@@ -2825,6 +2887,15 @@ function isDateOlderThanRetentionDays(dateString: string, today: Date): boolean 
 
 function isPastDate(dateString: string, todayDateString: string): boolean {
   return parseLocalDate(dateString).getTime() < parseLocalDate(todayDateString).getTime();
+}
+
+function isAppointmentStartInPast(dateString: string, startTime: string, now = new Date()): boolean {
+  const appointmentDay = parseLocalDate(dateString).getTime();
+  const today = startOfLocalDay(now).getTime();
+  if(appointmentDay < today) return true;
+  if(appointmentDay > today) return false;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  return timeToMinutes(startTime) < currentMinutes;
 }
 
 function formatDisplayDate(dateString: string): string {
@@ -3057,11 +3128,67 @@ function normalizeDraftTimeRange(range: TimeRangeDraft, changedField: "startTime
   return { ...range, startTime: minutesToTimeString(start), endTime: minutesToTimeString(end) };
 }
 
-// Converts draft ranges back to serialized "H:MM-H:MM" strings, filtering invalid entries.
-function serializeTimeRangeDrafts(ranges: TimeRangeDraft[]): string[] {
-  return ranges
+function normalizeAndMergeTimeRangeDrafts(ranges: TimeRangeDraft[]): TimeRangeDraft[] {
+  const sortedRanges = ranges
     .map(r => normalizeDraftTimeRange(r, "endTime"))
     .filter(r => hasOneHourSlot(timeToMinutes(r.startTime), timeToMinutes(r.endTime)))
+    .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+
+  const merged: TimeRangeDraft[] = [];
+  for(const range of sortedRanges){
+    const start = timeToMinutes(range.startTime);
+    const end = timeToMinutes(range.endTime);
+    const last = merged[merged.length - 1];
+    if(!last){
+      merged.push({ ...range });
+      continue;
+    }
+    const lastEnd = timeToMinutes(last.endTime);
+    if(start <= lastEnd){
+      last.endTime = minutesToTimeString(Math.max(lastEnd, end));
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged.map((range, index) => ({ ...range, id: range.id || index + 1 }));
+}
+
+function normalizeSerializedTimeRanges(ranges: string[]): string[] {
+  return serializeTimeRangeDrafts(ranges.map((range, index) => rangeToDraft(range, index + 1)));
+}
+
+function getNextAvailableTimeRangeDraft(ranges: TimeRangeDraft[]): TimeRangeDraft | null {
+  const merged = normalizeAndMergeTimeRangeDrafts(ranges);
+  const nextId = getNextTimeRangeId(ranges);
+  const preferredStarts = [9 * 60, ...buildMinuteRange(CAL_START_MIN, CAL_END_MIN - 60, 60)];
+  const uniqueStarts = Array.from(new Set(preferredStarts));
+  for(const start of uniqueStarts){
+    const end = start + 60;
+    const overlapsExisting = merged.some(range => {
+      const rangeStart = timeToMinutes(range.startTime);
+      const rangeEnd = timeToMinutes(range.endTime);
+      return start < rangeEnd && end > rangeStart;
+    });
+    if(!overlapsExisting){
+      return {
+        id: nextId,
+        startTime: minutesToTimeString(start),
+        endTime: minutesToTimeString(end),
+      };
+    }
+  }
+  return null;
+}
+
+function buildMinuteRange(startMin: number, endMin: number, stepMin: number): number[] {
+  const values: number[] = [];
+  for(let value = startMin; value <= endMin; value += stepMin) values.push(value);
+  return values;
+}
+
+// Converts draft ranges back to serialized "H:MM-H:MM" strings, filtering invalid entries.
+function serializeTimeRangeDrafts(ranges: TimeRangeDraft[]): string[] {
+  return normalizeAndMergeTimeRangeDrafts(ranges)
     .map(r => `${r.startTime}-${r.endTime}`);
 }
 
