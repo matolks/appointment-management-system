@@ -28,6 +28,7 @@ The waitlist displays all current patients waiting for an appointment. Separate 
 - View scheduled patients
 - View removed patients
 - Track patient status across waitlisted, scheduled, and removed sections
+- Automatically purge old scheduled records and removed records after 14 days
 
 ## Import Requirements
 
@@ -49,13 +50,17 @@ Excel imports support flexible column order when a header row is included. If no
 
 Appointment Manager stores data locally using SQLite. The app saves providers, openings, waitlist entries, scheduled records, and removed records so the data persists after the desktop app is closed.
 
-The app also includes backup tools for protecting local data. Users can export a backup, import a previous backup, restore the latest backup, and open the backup folder from inside the app.
+The app includes backup tools for protecting local data. Users can export a full JSON backup, import a previous backup, restore the latest automatic backup, and open the backup folder from inside the app.
 
-Backups are separate from Excel imports and exports. Excel files are used for waitlist data transfer, while backups are used to preserve and restore the full local application database.
+Backups are separate from Excel imports and exports. Excel files are used for waitlist data transfer, while backups are used to preserve and restore the full local application state.
+
+Automatic backups are kept for up to one year. Older automatic backups are deleted to reduce long-term storage of outdated patient records.
 
 ## Data Privacy
 
-Appointment Manager stores data locally on the user's machine. Patient data, database files, Excel exports, and backup files should not be committed to GitHub.
+Appointment Manager stores data locally on the user's machine. Patient data, SQLite database files, Excel exports, JSON backups, and backup folders should not be committed to GitHub.
+
+Backups may contain patient records that were later edited, removed, or purged from the active app state.
 
 ## Tech Stack
 
