@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2026 Vince Matolka.
+ * All rights reserved.
+ *
+ * This file is part of Appointment Manager.
+ * Unauthorized copying, modification, distribution, or use is prohibited
+ * without written permission from the copyright owner.
+ */
+
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

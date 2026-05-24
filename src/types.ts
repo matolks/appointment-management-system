@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2026 Vince Matolka.
+ * All rights reserved.
+ *
+ * This file is part of Appointment Manager.
+ * Unauthorized copying, modification, distribution, or use is prohibited
+ * without written permission from the copyright owner.
+ */
+
 export type WaitlistStatus = "WAITLISTED" | "SCHEDULED" | "REMOVED";
 export type DayCode = "M" | "Tu" | "W" | "Th" | "F";
 export type ViewMode = "CALENDAR" | "WAITLIST";

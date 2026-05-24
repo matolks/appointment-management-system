@@ -2,8 +2,14 @@
 // The day is 8-6 correct - nick
 // is name in 1 column
 
-// When adding available times to person on waitlist, it will store the same or orverlapping times
-// Really long reason will break the thing
+/*
+ * Copyright (c) 2026 Vince Matolka.
+ * All rights reserved.
+ *
+ * This file is part of Appointment Manager.
+ * Unauthorized copying, modification, distribution, or use is prohibited
+ * without written permission from the copyright owner.
+ */
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
