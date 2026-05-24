@@ -96,6 +96,7 @@ export type ImportPreviewRow = {
     name: string;
     provider: string;
     tier: string;
+    reason: string;
     dates: string;
     times: string;
   };
@@ -112,8 +113,71 @@ export type TimeWindow = {
 };
 
 export type PendingRemoval =
-  | { type: "ENTRY"; id: number; entryId?: never; title: string; message: string; confirmLabel: string }
-  | { type: "OPENING"; id: number; entryId?: never; title: string; message: string; confirmLabel: string }
-  | { type: "SCHEDULED_RECORD"; id: number; entryId: number; title: string; message: string; confirmLabel: string }
-  | { type: "REMOVED_RECORD"; id: number; entryId: number; title: string; message: string; confirmLabel: string }
-  | { type: "PROVIDER"; name: string; id?: never; entryId?: never; title: string; message: string; confirmLabel: string };
+  | {
+      type: "ENTRY";
+      id: number;
+      entryId?: never;
+      title: string;
+      message: string;
+      confirmLabel: string;
+    }
+  | {
+      type: "OPENING";
+      id: number;
+      entryId?: never;
+      title: string;
+      message: string;
+      confirmLabel: string;
+    }
+  | {
+      type: "SCHEDULED_RECORD";
+      id: number;
+      entryId: number;
+      title: string;
+      message: string;
+      confirmLabel: string;
+    }
+  | {
+      type: "REMOVED_RECORD";
+      id: number;
+      entryId: number;
+      title: string;
+      message: string;
+      confirmLabel: string;
+    }
+  | {
+      type: "PROVIDER";
+      name: string;
+      id?: never;
+      entryId?: never;
+      title: string;
+      message: string;
+      confirmLabel: string;
+    };
+
+export type BackupDialogResult = {
+  canceled: boolean;
+  filePath?: string;
+};
+
+export type OpenBackupFolderResult = {
+  opened: boolean;
+  error?: string;
+};
+
+export type AppStorageApi = {
+  load: () => Promise<PersistedAppState | null>;
+  save: (state: PersistedAppState) => Promise<void>;
+  reset: () => Promise<void>;
+
+  exportBackup: () => Promise<BackupDialogResult>;
+  importBackup: () => Promise<PersistedAppState | null>;
+  restoreLatestBackup: () => Promise<PersistedAppState | null>;
+  openBackupFolder: () => Promise<OpenBackupFolderResult>;
+};
+
+declare global {
+  interface Window {
+    appStorage?: AppStorageApi;
+  }
+}

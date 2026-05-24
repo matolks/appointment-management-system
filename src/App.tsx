@@ -1,5 +1,6 @@
 // how much time is an appointment (if it ranges what is it) - nick
 // The day is 8-6 correct - nick
+// is name in 1 column
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
@@ -67,6 +68,9 @@ const SNAP = 15;
 // Old openings and history records are purged after this many days
 const RETENTION_DAYS = 14;
 
+// Debounces SQLite writes so drag/resize actions do not create excessive backups.
+const STORAGE_SAVE_DEBOUNCE_MS = 350;
+
 // Hourly labels 
 const TIME_SLOT_LABELS = buildTimeOptions(CAL_START_MIN, CAL_END_MIN - 60, 60);
 
@@ -132,6 +136,11 @@ function App() {
   // Prevents the app from overwriting saved SQLite data before the first load finishes.
   const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
 
+  // Database backup/status UI state.
+  const [isStorageBusy, setIsStorageBusy] = useState(false);
+  const [storageMessage, setStorageMessage] = useState("");
+  const [storageError, setStorageError] = useState("");
+
   // Stores the user's current start/end selection per eligible entry on the calendar panel
   const [scheduleSelections, setScheduleSelections] = useState<Record<number, ScheduleSelection>>({});
 
@@ -167,6 +176,84 @@ function App() {
   const dragRef    = useRef<DragState | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
 
+  const buildPersistedAppState = useCallback((): PersistedAppState => ({
+    version: 1,
+    providers,
+    entries,
+    openings,
+    scheduledRecords,
+    removedRecords,
+  }), [providers, entries, openings, scheduledRecords, removedRecords]);
+
+  function clearCurrentAppState() {
+    setProviders([]);
+    setEntries([]);
+    setOpenings([]);
+    setScheduledRecords([]);
+    setRemovedRecords([]);
+    setScheduleSelections({});
+    setSelectedOpeningId(null);
+    setHoveredOpeningId(null);
+    setEditingOpening(null);
+    setEditingEntry(null);
+    setEditingProvider(null);
+    setPendingRemoval(null);
+    setActiveView("CALENDAR");
+    setWaitlistHistoryPanel("ACTIVE");
+    setIsActionPageOpen(false);
+    setIsSettingsModalOpen(false);
+    setActiveWaitlistSearch("");
+    setScheduledSearch("");
+    setRemovedSearch("");
+    setOpeningProvider("");
+    setOpeningDate(getDefaultOpeningDate());
+    setOpeningStartTime("8:00");
+    setOpeningEndTime("9:00");
+    setWaitlistDateAdded(getTodayDateInputValue());
+    setWaitlistFirstName("");
+    setWaitlistLastName("");
+    setWaitlistProvider("");
+    setWaitlistTier(1);
+    setWaitlistReason(getTierReason(1));
+    setWaitlistAvailableDays([]);
+    setWaitlistAvailableTimeRanges([]);
+    setProviderName("");
+    setProviderColor(DEFAULT_PROVIDER_COLOR);
+    clearImportPreview();
+  }
+
+  function applyPersistedAppState(saved: PersistedAppState | null) {
+    if (!saved) {
+      clearCurrentAppState();
+      return;
+    }
+
+    setProviders(saved.providers ?? []);
+    setEntries(saved.entries ?? []);
+    setOpenings(saved.openings ?? []);
+    setScheduledRecords(saved.scheduledRecords ?? []);
+    setRemovedRecords(saved.removedRecords ?? []);
+    setScheduleSelections({});
+    setSelectedOpeningId(null);
+    setHoveredOpeningId(null);
+    setEditingOpening(null);
+    setEditingEntry(null);
+    setEditingProvider(null);
+    setPendingRemoval(null);
+    setActiveView("CALENDAR");
+    setWaitlistHistoryPanel("ACTIVE");
+    setIsActionPageOpen(false);
+    setActiveWaitlistSearch("");
+    setScheduledSearch("");
+    setRemovedSearch("");
+    clearImportPreview();
+  }
+
+  async function saveCurrentStateToStorage() {
+    if (!window.appStorage || !hasLoadedStorage) return;
+    await window.appStorage.save(buildPersistedAppState());
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // EFFECTS
   // ─────────────────────────────────────────────────────────────────────────
@@ -188,10 +275,10 @@ function App() {
           setScheduledRecords(saved.scheduledRecords ?? []);
           setRemovedRecords(saved.removedRecords ?? []);
         }
+        setHasLoadedStorage(true);
       } catch (error) {
         console.error("Failed to load app state from SQLite:", error);
-      } finally {
-        setHasLoadedStorage(true);
+        setStorageError("Database load failed. Automatic saving is disabled until the app is restarted.");
       }
     }
 
@@ -202,26 +289,15 @@ function App() {
   useEffect(() => {
     if (!hasLoadedStorage || !window.appStorage) return;
 
-    const stateToSave: PersistedAppState = {
-      version: 1,
-      providers,
-      entries,
-      openings,
-      scheduledRecords,
-      removedRecords,
-    };
+    const saveTimeoutId = window.setTimeout(() => {
+      window.appStorage?.save(buildPersistedAppState()).catch(error => {
+        console.error("Failed to save app state to SQLite:", error);
+        setStorageError("Database save failed. Check the console for details.");
+      });
+    }, STORAGE_SAVE_DEBOUNCE_MS);
 
-    window.appStorage.save(stateToSave).catch(error => {
-      console.error("Failed to save app state to SQLite:", error);
-    });
-  }, [
-    hasLoadedStorage,
-    providers,
-    entries,
-    openings,
-    scheduledRecords,
-    removedRecords,
-  ]);
+    return () => window.clearTimeout(saveTimeoutId);
+  }, [hasLoadedStorage, buildPersistedAppState]);
 
   // Retention rules:
   // - Openings expire only when the opening date is more than RETENTION_DAYS in the past.
@@ -954,50 +1030,147 @@ function App() {
     setWaitlistAvailableTimeRanges([]);
   }
 
-  function resetDatabase() {
+  async function exportDatabaseBackup() {
+    if (!window.appStorage) {
+      setStorageError("Database backups are only available in the desktop app.");
+      return;
+    }
+
+    setIsStorageBusy(true);
+    setStorageError("");
+    setStorageMessage("");
+
+    try {
+      await saveCurrentStateToStorage();
+      const result = await window.appStorage.exportBackup();
+
+      if (result.canceled) {
+        setStorageMessage("Backup export canceled.");
+      } else {
+        setStorageMessage(result.filePath ? `Backup exported to ${result.filePath}.` : "Backup exported.");
+      }
+    } catch (error) {
+      console.error("Failed to export database backup:", error);
+      setStorageError("Backup export failed. Check the console for details.");
+    } finally {
+      setIsStorageBusy(false);
+    }
+  }
+
+  async function importDatabaseBackup() {
+    if (!window.appStorage) {
+      setStorageError("Database backups are only available in the desktop app.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Import a database backup? This will replace all current providers, openings, waitlist entries, scheduled records, and removed records.",
+    );
+    if (!confirmed) return;
+
+    setIsStorageBusy(true);
+    setStorageError("");
+    setStorageMessage("");
+
+    try {
+      const importedState = await window.appStorage.importBackup();
+      if (!importedState) {
+        setStorageMessage("Backup import canceled.");
+        return;
+      }
+
+      applyPersistedAppState(importedState);
+      setHasLoadedStorage(true);
+      setStorageMessage("Backup imported and applied.");
+    } catch (error) {
+      console.error("Failed to import database backup:", error);
+      setStorageError("Backup import failed. Check the console for details.");
+    } finally {
+      setIsStorageBusy(false);
+    }
+  }
+
+  async function restoreLatestDatabaseBackup() {
+    if (!window.appStorage) {
+      setStorageError("Database backups are only available in the desktop app.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Restore the latest automatic backup? This will replace the current database state.",
+    );
+    if (!confirmed) return;
+
+    setIsStorageBusy(true);
+    setStorageError("");
+    setStorageMessage("");
+
+    try {
+      const restoredState = await window.appStorage.restoreLatestBackup();
+      if (!restoredState) {
+        setStorageMessage("No automatic backup was found.");
+        return;
+      }
+
+      applyPersistedAppState(restoredState);
+      setHasLoadedStorage(true);
+      setStorageMessage("Latest automatic backup restored.");
+    } catch (error) {
+      console.error("Failed to restore latest backup:", error);
+      setStorageError("Backup restore failed. Check the console for details.");
+    } finally {
+      setIsStorageBusy(false);
+    }
+  }
+
+  async function openDatabaseBackupFolder() {
+    if (!window.appStorage) {
+      setStorageError("Database backups are only available in the desktop app.");
+      return;
+    }
+
+    setIsStorageBusy(true);
+    setStorageError("");
+    setStorageMessage("");
+
+    try {
+      const result = await window.appStorage.openBackupFolder();
+      if (result.opened) {
+        setStorageMessage("Backup folder opened.");
+      } else {
+        setStorageError(result.error ?? "Backup folder could not be opened.");
+      }
+    } catch (error) {
+      console.error("Failed to open backup folder:", error);
+      setStorageError("Backup folder could not be opened. Check the console for details.");
+    } finally {
+      setIsStorageBusy(false);
+    }
+  }
+
+  async function resetDatabase() {
     const confirmed = window.confirm(
       "Reset the database? This will permanently delete all providers, openings, waitlist entries, scheduled records, and removed records.",
     );
     if (!confirmed) return;
 
-    setProviders([]);
-    setEntries([]);
-    setOpenings([]);
-    setScheduledRecords([]);
-    setRemovedRecords([]);
-    setScheduleSelections({});
-    setSelectedOpeningId(null);
-    setHoveredOpeningId(null);
-    setEditingOpening(null);
-    setEditingEntry(null);
-    setEditingProvider(null);
-    setPendingRemoval(null);
-    setActiveView("CALENDAR");
-    setWaitlistHistoryPanel("ACTIVE");
-    setIsActionPageOpen(false);
-    setIsSettingsModalOpen(false);
-    setActiveWaitlistSearch("");
-    setScheduledSearch("");
-    setRemovedSearch("");
-    // Reset opening form state
-    setOpeningProvider("");
-    setOpeningDate(getDefaultOpeningDate());
-    setOpeningStartTime("8:00");
-    setOpeningEndTime("9:00");
-    // Reset waitlist form state
-    setWaitlistDateAdded(getTodayDateInputValue());
-    setWaitlistFirstName("");
-    setWaitlistLastName("");
-    setWaitlistProvider("");
-    setWaitlistTier(1);
-    setWaitlistReason(getTierReason(1));
-    setWaitlistAvailableDays([]);
-    setWaitlistAvailableTimeRanges([]);
-    // Reset provider form state
-    setProviderName("");
-    setProviderColor(DEFAULT_PROVIDER_COLOR);
-    clearImportPreview();
+    setIsStorageBusy(true);
+    setStorageError("");
+    setStorageMessage("");
+
+    try {
+      if (window.appStorage) await window.appStorage.reset();
+      clearCurrentAppState();
+      setHasLoadedStorage(true);
+      setStorageMessage("Database reset. A backup was created before reset when saved data existed.");
+    } catch (error) {
+      console.error("Failed to reset database:", error);
+      setStorageError("Database reset failed. Check the console for details.");
+    } finally {
+      setIsStorageBusy(false);
+    }
   }
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER HELPERS
@@ -1048,6 +1221,7 @@ function App() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const cornerActionLabel = activeView === "WAITLIST" ? "+ Add to Waitlist" : "+ Add Opening";
+  const storageApiAvailable = Boolean(window.appStorage);
 
   return (
     <main className="app-shell">
@@ -1979,19 +2153,71 @@ function App() {
               <button className="close-action-button" onClick={() => setIsSettingsModalOpen(false)}>x
               </button>
             </div>
-            <section className="settings-section">
-              <div>
-                <h3>Reset database</h3>
-                <p>Deletes all providers, openings, waitlist entries, scheduled records, and removed records.</p>
-              </div>
-              <button className="btn-danger" onClick={resetDatabase}>
-                Reset Database
-              </button>
-            </section>
+
+            <div className="settings-stack">
+              <section className="settings-section">
+                <div>
+                  <h3>Database backups</h3>
+                  <p>
+                    Export, import, restore, or open the full database backup folder.
+                    These backups include providers, openings, waitlist entries, scheduled records, and removed records.
+                  </p>
+                  {!storageApiAvailable && (
+                    <p className="settings-inline-warning">Database backups are only available in the packaged Electron app.</p>
+                  )}
+                </div>
+
+                <div className="settings-button-column">
+                  <button
+                    className="btn-primary"
+                    disabled={isStorageBusy || !storageApiAvailable}
+                    onClick={exportDatabaseBackup}
+                  >
+                    Export Backup
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={isStorageBusy || !storageApiAvailable}
+                    onClick={importDatabaseBackup}
+                  >
+                    Import Backup
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={isStorageBusy || !storageApiAvailable}
+                    onClick={restoreLatestDatabaseBackup}
+                  >
+                    Restore Latest
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={isStorageBusy || !storageApiAvailable}
+                    onClick={openDatabaseBackupFolder}
+                  >
+                    Open Backup Folder
+                  </button>
+                </div>
+              </section>
+
+              <section className="settings-section">
+                <div>
+                  <h3>Reset database</h3>
+                  <p>Deletes all providers, openings, waitlist entries, scheduled records, and removed records.</p>
+                </div>
+                <button className="btn-danger" disabled={isStorageBusy} onClick={resetDatabase}>
+                  Reset Database
+                </button>
+              </section>
+
+              {(storageMessage || storageError) && (
+                <div className={storageError ? "settings-status settings-status-error" : "settings-status"}>
+                  {storageError || storageMessage}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
-
       {/* ── CONFIRM REMOVAL MODAL ─────────────────────────────────────────── */}
       {pendingRemoval && (
         <div className="modal-backdrop" onClick={() => setPendingRemoval(null)}>
@@ -2547,21 +2773,40 @@ function parseSingleImportedTimeRange(value: string): TimeWindow | null {
   let startSuffix = startClock.suffix;
   let endSuffix   = endClock.suffix;
 
+  // Infer missing suffix on the start side when only end has one
   if (!startSuffix && endSuffix) {
     if (endSuffix === "pm") {
-      startSuffix = startClock.hour === 12 ? "pm" : startClock.hour > endClock.hour && startClock.hour >= 8 ? "am" : "pm";
+      startSuffix =
+        startClock.hour === 12 ? "pm"
+        : startClock.hour > endClock.hour && startClock.hour >= 8 ? "am"
+        : "pm";
     } else {
       startSuffix = "am";
     }
   }
 
+  // Infer missing suffix on the end side when only start has one
   if (startSuffix && !endSuffix) {
-    if (startSuffix === "am" && endClock.hour < startClock.hour) endSuffix = "pm";
-    else endSuffix = startSuffix;
+    if (startSuffix === "am" && endClock.hour < startClock.hour) {
+      // e.g. "9am-5" → end is clearly PM since 5 < 9
+      endSuffix = "pm";
+    } else if (startSuffix === "am" && endClock.hour >= 1 && endClock.hour <= 7) {
+      // Hours 1–7 with no suffix are always PM in this app's convention
+      endSuffix = "pm";
+    } else {
+      endSuffix = startSuffix;
+    }
   }
 
   const start = importedClockToMinutes({ ...startClock, suffix: startSuffix });
-  const end   = importedClockToMinutes({ ...endClock,   suffix: endSuffix   });
+  let   end   = importedClockToMinutes({ ...endClock,   suffix: endSuffix   });
+
+  // Last-resort flip: if end still lands ≤ start and the end suffix was inferred
+  // (not explicitly written by the user), try flipping it to PM.
+  if (end <= start && !endClock.suffix) {
+    const endAsPm = importedClockToMinutes({ ...endClock, suffix: "pm" });
+    if (endAsPm > start) end = endAsPm;
+  }
 
   if (start < CAL_START_MIN || end > CAL_END_MIN || end <= start || !hasOneHourSlot(start, end)) return null;
   return { start, end };

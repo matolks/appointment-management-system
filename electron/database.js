@@ -5,13 +5,39 @@ import fs from "node:fs";
 
 const APP_STATE_KEY = "main";
 const CURRENT_VERSION = 1;
+const MAX_AUTOMATIC_BACKUPS = 50;
 
 let db = null;
 
-function getDbPath() {
+function getDataDirectory() {
   const dbDir = path.join(app.getPath("userData"), "data");
   fs.mkdirSync(dbDir, { recursive: true });
-  return path.join(dbDir, "appointments.sqlite");
+  return dbDir;
+}
+
+function getDbPath() {
+  return path.join(getDataDirectory(), "appointments.sqlite");
+}
+
+export function getBackupDirectory() {
+  const backupDir = path.join(app.getPath("userData"), "backups");
+  fs.mkdirSync(backupDir, { recursive: true });
+  return backupDir;
+}
+
+function getTimestampForFileName() {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+function getEmptyAppState() {
+  return {
+    version: CURRENT_VERSION,
+    providers: [],
+    entries: [],
+    openings: [],
+    scheduledRecords: [],
+    removedRecords: [],
+  };
 }
 
 export function getDatabase() {
@@ -51,23 +77,181 @@ function normalizeAppState(value) {
   };
 }
 
+function getCurrentAppStateRow(database) {
+  return database
+    .prepare("SELECT value FROM app_state WHERE key = ?")
+    .get(APP_STATE_KEY);
+}
+
+function readStoredAppState(database = getDatabase()) {
+  const row = getCurrentAppStateRow(database);
+
+  if (!row?.value) return null;
+
+  return normalizeAppState(JSON.parse(row.value));
+}
+
+function writeJsonFileAtomic(filePath, value) {
+  const tempPath = `${filePath}.tmp`;
+
+  fs.writeFileSync(tempPath, JSON.stringify(value, null, 2), "utf8");
+  fs.renameSync(tempPath, filePath);
+}
+
+function createBackupPayload(state, backupType) {
+  return {
+    backupType,
+    appName: "Appointment Manager",
+    appStateVersion: CURRENT_VERSION,
+    createdAt: new Date().toISOString(),
+    state,
+  };
+}
+
+function createAutomaticBackupFromState(state, backupType) {
+  const normalized = normalizeAppState(state);
+  if (!normalized) return null;
+
+  const backupDir = getBackupDirectory();
+  const fileName = `appointment-manager-${backupType}-${getTimestampForFileName()}-${Math.random()
+    .toString(16)
+    .slice(2)}.json`;
+  const filePath = path.join(backupDir, fileName);
+
+  writeJsonFileAtomic(filePath, createBackupPayload(normalized, backupType));
+  pruneAutomaticBackups();
+
+  return filePath;
+}
+
+function createAutomaticBackupFromDatabase(database, backupType) {
+  const currentState = readStoredAppState(database);
+
+  if (!currentState) return null;
+
+  return createAutomaticBackupFromState(currentState, backupType);
+}
+
+function pruneAutomaticBackups() {
+  const backupDir = getBackupDirectory();
+
+  const backupFiles = fs
+    .readdirSync(backupDir)
+    .filter(
+      (fileName) =>
+        fileName.startsWith("appointment-manager-") &&
+        fileName.endsWith(".json"),
+    )
+    .map((fileName) => {
+      const filePath = path.join(backupDir, fileName);
+      const stat = fs.statSync(filePath);
+
+      return {
+        fileName,
+        filePath,
+        mtimeMs: stat.mtimeMs,
+      };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const filesToDelete = backupFiles.slice(MAX_AUTOMATIC_BACKUPS);
+
+  for (const file of filesToDelete) {
+    try {
+      fs.unlinkSync(file.filePath);
+    } catch {
+      // If a backup cannot be deleted, leave it alone.
+    }
+  }
+}
+
+function readBackupFile(filePath) {
+  const raw = fs.readFileSync(filePath, "utf8");
+  const parsed = JSON.parse(raw);
+
+  // Supports the new wrapped backup format.
+  if (parsed?.state) {
+    const normalized = normalizeAppState(parsed.state);
+    if (!normalized) {
+      throw new Error("Backup file contains invalid app state.");
+    }
+    return normalized;
+  }
+
+  // Supports plain PersistedAppState JSON if you ever export/import that directly.
+  const normalized = normalizeAppState(parsed);
+  if (!normalized) {
+    throw new Error("Backup file contains invalid app state.");
+  }
+
+  return normalized;
+}
+
+function writeAppStateTransaction(database, state) {
+  const normalized = normalizeAppState(state);
+
+  if (!normalized) {
+    throw new TypeError("Invalid app state.");
+  }
+
+  const value = JSON.stringify(normalized);
+
+  database.exec("BEGIN IMMEDIATE TRANSACTION;");
+
+  try {
+    database
+      .prepare(
+        `
+        INSERT INTO app_state (key, value, updated_at)
+        VALUES (?, json(?), CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET
+          value = json(excluded.value),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      )
+      .run(APP_STATE_KEY, value);
+
+    database.exec("COMMIT;");
+  } catch (error) {
+    try {
+      database.exec("ROLLBACK;");
+    } catch {
+      // Ignore rollback failure and throw the original error.
+    }
+
+    throw error;
+  }
+
+  return normalized;
+}
+
 export function loadAppState() {
   const database = getDatabase();
 
-  const row = database
-    .prepare("SELECT value FROM app_state WHERE key = ?")
-    .get(APP_STATE_KEY);
+  const row = getCurrentAppStateRow(database);
 
   if (!row?.value) return null;
 
   try {
     return normalizeAppState(JSON.parse(row.value));
   } catch {
+    const corruptKey = `${APP_STATE_KEY}.corrupt.${Date.now()}`;
+    const corruptBackupPath = path.join(
+      getBackupDirectory(),
+      `corrupt-app-state-${getTimestampForFileName()}.txt`,
+    );
+
+    try {
+      fs.writeFileSync(corruptBackupPath, row.value, "utf8");
+    } catch {
+      // If the corrupt row cannot be written out, still quarantine it below.
+    }
+
     database
       .prepare(
         "UPDATE app_state SET key = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?",
       )
-      .run(`${APP_STATE_KEY}.corrupt.${Date.now()}`, APP_STATE_KEY);
+      .run(corruptKey, APP_STATE_KEY);
 
     return null;
   }
@@ -81,19 +265,20 @@ export function saveAppState(state) {
     throw new TypeError("Invalid app state.");
   }
 
-  const value = JSON.stringify(normalized);
+  const nextValue = JSON.stringify(normalized);
+  const currentRow = getCurrentAppStateRow(database);
 
-  database
-    .prepare(
-      `
-      INSERT INTO app_state (key, value, updated_at)
-      VALUES (?, json(?), CURRENT_TIMESTAMP)
-      ON CONFLICT(key) DO UPDATE SET
-        value = json(excluded.value),
-        updated_at = CURRENT_TIMESTAMP
-    `,
-    )
-    .run(APP_STATE_KEY, value);
+  // Avoid creating duplicate backups and writes when React sends the same state again.
+  if (currentRow?.value === nextValue) {
+    return true;
+  }
+
+  // Before replacing the current database state, preserve the previous good state.
+  if (currentRow?.value) {
+    createAutomaticBackupFromDatabase(database, "before-save");
+  }
+
+  writeAppStateTransaction(database, normalized);
 
   return true;
 }
@@ -101,7 +286,24 @@ export function saveAppState(state) {
 export function resetAppState() {
   const database = getDatabase();
 
-  database.prepare("DELETE FROM app_state WHERE key = ?").run(APP_STATE_KEY);
+  // Reset is destructive, so preserve the current state first.
+  createAutomaticBackupFromDatabase(database, "before-reset");
+
+  database.exec("BEGIN IMMEDIATE TRANSACTION;");
+
+  try {
+    database.prepare("DELETE FROM app_state WHERE key = ?").run(APP_STATE_KEY);
+
+    database.exec("COMMIT;");
+  } catch (error) {
+    try {
+      database.exec("ROLLBACK;");
+    } catch {
+      // Ignore rollback failure and throw the original error.
+    }
+
+    throw error;
+  }
 
   database.exec(`
     PRAGMA wal_checkpoint(TRUNCATE);
@@ -109,6 +311,80 @@ export function resetAppState() {
   `);
 
   return true;
+}
+
+export function exportFullBackup(filePath) {
+  const database = getDatabase();
+  const currentState = readStoredAppState(database) ?? getEmptyAppState();
+
+  writeJsonFileAtomic(
+    filePath,
+    createBackupPayload(currentState, "manual-export"),
+  );
+
+  return true;
+}
+
+export function importFullBackup(filePath) {
+  const database = getDatabase();
+  const importedState = readBackupFile(filePath);
+
+  // Import replaces the database, so preserve the current state first.
+  createAutomaticBackupFromDatabase(database, "before-import");
+
+  const restoredState = writeAppStateTransaction(database, importedState);
+
+  return restoredState;
+}
+
+export function restoreLatestBackup() {
+  const database = getDatabase();
+  const backupDir = getBackupDirectory();
+
+  const backupFiles = fs
+    .readdirSync(backupDir)
+    .filter(
+      (fileName) =>
+        fileName.startsWith("appointment-manager-") &&
+        fileName.endsWith(".json"),
+    )
+    .map((fileName) => {
+      const filePath = path.join(backupDir, fileName);
+      const stat = fs.statSync(filePath);
+
+      return {
+        fileName,
+        filePath,
+        mtimeMs: stat.mtimeMs,
+      };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  if (backupFiles.length === 0) {
+    return null;
+  }
+
+  let latestValidBackup = null;
+
+  for (const backup of backupFiles) {
+    try {
+      latestValidBackup = readBackupFile(backup.filePath);
+      break;
+    } catch {
+      // Skip invalid backup files and try the next newest one.
+    }
+  }
+
+  if (!latestValidBackup) {
+    throw new Error("No valid backup files could be restored.");
+  }
+
+  // Restore is destructive, so preserve the current state first.
+  createAutomaticBackupFromDatabase(database, "before-restore");
+
+  const restoredState = writeAppStateTransaction(database, latestValidBackup);
+
+  return restoredState;
 }
 
 export function closeDatabase() {

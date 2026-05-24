@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -6,6 +6,10 @@ import {
   saveAppState,
   resetAppState,
   closeDatabase,
+  exportFullBackup,
+  importFullBackup,
+  restoreLatestBackup,
+  getBackupDirectory,
 } from "./database.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +47,12 @@ function assertTrustedSender(event) {
   }
 }
 
+function getBackupDefaultFileName() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+  return `appointment-manager-backup-${timestamp}.json`;
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -73,19 +83,83 @@ async function createWindow() {
   }
 }
 
+// Load current persisted application state.
 ipcMain.handle("app-state:load", (event) => {
   assertTrustedSender(event);
   return loadAppState();
 });
 
+// Save current application state.
+// The database layer should create an automatic backup before committing.
 ipcMain.handle("app-state:save", (event, state) => {
   assertTrustedSender(event);
   return saveAppState(state);
 });
 
+// Reset all persisted application state.
 ipcMain.handle("app-state:reset", (event) => {
   assertTrustedSender(event);
   return resetAppState();
+});
+
+// Export a full JSON backup selected by the user.
+ipcMain.handle("app-state:export-backup", async (event) => {
+  assertTrustedSender(event);
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Export Full Backup",
+    defaultPath: getBackupDefaultFileName(),
+    filters: [{ name: "JSON Backup", extensions: ["json"] }],
+  });
+
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  await exportFullBackup(result.filePath);
+
+  return {
+    canceled: false,
+    filePath: result.filePath,
+  };
+});
+
+// Import a full JSON backup selected by the user.
+// The database layer should validate, persist, and return the restored state.
+ipcMain.handle("app-state:import-backup", async (event) => {
+  assertTrustedSender(event);
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Import Full Backup",
+    properties: ["openFile"],
+    filters: [{ name: "JSON Backup", extensions: ["json"] }],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  const restoredState = await importFullBackup(result.filePaths[0]);
+  return restoredState;
+});
+
+// Restore the latest automatic backup.
+ipcMain.handle("app-state:restore-latest-backup", async (event) => {
+  assertTrustedSender(event);
+  return restoreLatestBackup();
+});
+
+// Open the automatic backup folder in Finder/File Explorer.
+ipcMain.handle("app-state:open-backup-folder", async (event) => {
+  assertTrustedSender(event);
+
+  const backupDirectory = getBackupDirectory();
+  const errorMessage = await shell.openPath(backupDirectory);
+
+  return {
+    opened: errorMessage === "",
+    error: errorMessage || undefined,
+  };
 });
 
 app.whenReady().then(createWindow);

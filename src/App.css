@@ -1195,7 +1195,13 @@ td button:hover { background: #2a2a2e; border-color: #3a3a40; }
 
 /* ── Settings modal ── */
 .settings-modal {
-  width: 520px;
+  width: 620px;
+}
+
+.settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .settings-section {
@@ -1223,8 +1229,41 @@ td button:hover { background: #2a2a2e; border-color: #3a3a40; }
   line-height: 1.5;
 }
 
+.settings-inline-warning {
+  margin-top: 8px !important;
+  color: #d4a644 !important;
+}
+
 .settings-section .btn-danger {
   flex-shrink: 0;
+}
+
+.settings-button-column {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  min-width: 165px;
+  flex-shrink: 0;
+}
+
+.settings-button-column button {
+  width: 100%;
+}
+
+.settings-status {
+  padding: 10px 12px;
+  border: 1px solid #2a4030;
+  border-radius: 8px;
+  background: #101a10;
+  color: #6db870;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-status-error {
+  border-color: #5a3434;
+  background: #2a1515;
+  color: #e07070;
 }
 
 /* ── Modals ── */
