@@ -21,7 +21,8 @@ The waitlist displays all current patients waiting for an appointment. Separate 
 
 ### Features
 
-- Sort patients by date added, name, provider, or tier
+- Search active, scheduled, and removed patients
+- Sort active waitlist patients by date added, name, provider, tier, or status
 - Add, edit, or remove patients from the waitlist
 - View scheduled patients
 - View removed patients
@@ -58,7 +59,6 @@ Appointment Manager stores data locally using SQLite. The app saves providers, o
 
 ## Future Improvements
 
-- Search by name on the waitlist
 - Send automated text messages when scheduling a patient
 - Support military time if needed
 - Improve scheduling notifications and reminders

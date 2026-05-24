@@ -1,6 +1,5 @@
 // how much time is an appointment (if it ranges what is it) - nick
 // The day is 8-6 correct - nick
-// search for name on waitlist
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
@@ -93,6 +92,11 @@ function App() {
   const [waitlistHistoryPanel, setWaitlistHistoryPanel] = useState<WaitlistHistoryPanel>("ACTIVE");
   const [actionMode,           setActionMode]           = useState<ActionMode>("OPENING");
   const [isActionPageOpen,     setIsActionPageOpen]     = useState(false);
+
+  // Search state for each waitlist section/tab.
+  const [activeWaitlistSearch, setActiveWaitlistSearch] = useState("");
+  const [scheduledSearch,      setScheduledSearch]      = useState("");
+  const [removedSearch,        setRemovedSearch]        = useState("");
 
   // Calendar interaction state ────────────────────────────────────────────
   const [calendarLocked,    setCalendarLocked]    = useState(true);
@@ -404,16 +408,29 @@ function App() {
 
   const todayDateString = getTodayDateInputValue();
 
-  const upcomingScheduledRecords = [...scheduledRecords]
+  const filteredScheduledRecords = useMemo(
+    () => scheduledRecords.filter(record => scheduledRecordMatchesSearch(record, scheduledSearch)),
+    [scheduledRecords, scheduledSearch],
+  );
+
+  const upcomingScheduledRecords = [...filteredScheduledRecords]
     .filter(r => !isPastDate(r.appointmentDate, todayDateString))
     .sort(compareScheduledRecordsByAppointment);
 
-  const pastScheduledRecords = [...scheduledRecords]
+  const pastScheduledRecords = [...filteredScheduledRecords]
     .filter(r => isPastDate(r.appointmentDate, todayDateString))
     .sort((a, b) => compareScheduledRecordsByAppointment(b, a));
 
+  const filteredRemovedRecords = useMemo(
+    () => removedRecords.filter(record => removedRecordMatchesSearch(record, removedSearch)),
+    [removedRecords, removedSearch],
+  );
+
   const sortedWaitlistEntries = useMemo(() => {
-    const waitlistedOnly = entries.filter(e => e.status === "WAITLISTED");
+    const waitlistedOnly = entries
+      .filter(e => e.status === "WAITLISTED")
+      .filter(e => waitlistEntryMatchesSearch(e, activeWaitlistSearch));
+
     return [...waitlistedOnly].sort((a, b) => {
       const dir = sortDirection === "asc" ? 1 : -1;
       switch (sortField) {
@@ -424,7 +441,7 @@ function App() {
         default:          return a.status.localeCompare(b.status) * dir; // "status" sort field
       }
     });
-  }, [entries, sortField, sortDirection]);
+  }, [entries, sortField, sortDirection, activeWaitlistSearch]);
 
   // Derived label for the opening duration preview in the Add Opening form
   const openingDurationLabel = (() => {
@@ -959,6 +976,9 @@ function App() {
     setWaitlistHistoryPanel("ACTIVE");
     setIsActionPageOpen(false);
     setIsSettingsModalOpen(false);
+    setActiveWaitlistSearch("");
+    setScheduledSearch("");
+    setRemovedSearch("");
     // Reset opening form state
     setOpeningProvider("");
     setOpeningDate(getDefaultOpeningDate());
@@ -1398,39 +1418,62 @@ function App() {
 
           {/* Active waitlist table */}
           {waitlistHistoryPanel === "ACTIVE" && (
-            <table>
-              <thead>
-                <tr>
-                  <th><button className="table-sort-button" onClick={() => handleSortChange("dateAdded")}>Date Added {getSortIndicator(sortField, sortDirection, "dateAdded")}</button></th>
-                  <th><button className="table-sort-button" onClick={() => handleSortChange("name")}>Name {getSortIndicator(sortField, sortDirection, "name")}</button></th>
-                  <th><button className="table-sort-button" onClick={() => handleSortChange("provider")}>Provider {getSortIndicator(sortField, sortDirection, "provider")}</button></th>
-                  <th><button className="table-sort-button" onClick={() => handleSortChange("tier")}>Tier {getSortIndicator(sortField, sortDirection, "tier")}</button></th>
-                  <th>Reason</th>
-                  <th>Dates</th>
-                  <th>Times</th>
-                  <th><button className="table-sort-button" onClick={() => handleSortChange("status")}>Status {getSortIndicator(sortField, sortDirection, "status")}</button></th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedWaitlistEntries.map(entry => (
-                  <tr key={entry.id}>
-                    <td>{entry.dateAdded}</td>
-                    <td>{getFullName(entry)}</td>
-                    <td>{entry.provider}</td>
-                    <td><span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span></td>
-                    <td>{entry.reason}</td>
-                    <td>{entry.availableDays.join(", ") || "Any"}</td>
-                    <td>{formatAvailableTimes(entry.availableTimes)}</td>
-                    <td>{entry.status}</td>
-                    <td>
-                      <button className="edit-btn-small" onClick={() => setEditingEntry({ ...entry })}>Edit</button>
-                      <button className="remove-button"  onClick={() => requestRemoveEntry(entry)}>Remove</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              <div className="section-search-row">
+                <label className="section-search-field">
+                  <span className="field-label-text">Search waitlist</span>
+                  <input
+                    type="search"
+                    value={activeWaitlistSearch}
+                    onChange={e => setActiveWaitlistSearch(e.target.value)}
+                    placeholder="Search by patient, provider, reason, tier, status, or availability"
+                  />
+                </label>
+                <span className="section-search-count">
+                  {sortedWaitlistEntries.length} of {waitlistedCount} shown
+                </span>
+              </div>
+
+              {sortedWaitlistEntries.length === 0 ? (
+                <p className="empty-message">
+                  {waitlistedCount === 0 ? "No patients are on the active waitlist." : "No active waitlist patients match this search."}
+                </p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th><button className="table-sort-button" onClick={() => handleSortChange("dateAdded")}>Date Added {getSortIndicator(sortField, sortDirection, "dateAdded")}</button></th>
+                      <th><button className="table-sort-button" onClick={() => handleSortChange("name")}>Name {getSortIndicator(sortField, sortDirection, "name")}</button></th>
+                      <th><button className="table-sort-button" onClick={() => handleSortChange("provider")}>Provider {getSortIndicator(sortField, sortDirection, "provider")}</button></th>
+                      <th><button className="table-sort-button" onClick={() => handleSortChange("tier")}>Tier {getSortIndicator(sortField, sortDirection, "tier")}</button></th>
+                      <th>Reason</th>
+                      <th>Dates</th>
+                      <th>Times</th>
+                      <th><button className="table-sort-button" onClick={() => handleSortChange("status")}>Status {getSortIndicator(sortField, sortDirection, "status")}</button></th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedWaitlistEntries.map(entry => (
+                      <tr key={entry.id}>
+                        <td>{entry.dateAdded}</td>
+                        <td>{getFullName(entry)}</td>
+                        <td>{entry.provider}</td>
+                        <td><span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span></td>
+                        <td>{entry.reason}</td>
+                        <td>{entry.availableDays.join(", ") || "Any"}</td>
+                        <td>{formatAvailableTimes(entry.availableTimes)}</td>
+                        <td>{entry.status}</td>
+                        <td>
+                          <button className="edit-btn-small" onClick={() => setEditingEntry({ ...entry })}>Edit</button>
+                          <button className="remove-button"  onClick={() => requestRemoveEntry(entry)}>Remove</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
           )}
 
           {/* Scheduled history */}
@@ -1438,28 +1481,49 @@ function App() {
             scheduledRecords.length === 0 ? (
               <p className="empty-message">No patients have been scheduled yet.</p>
             ) : (
-              <div className="history-section-stack">
-                <section className="history-section">
-                  <div className="history-section-header">
-                    <h2 className="history-section-title">Scheduled</h2>
-                    <span className="items-count">{upcomingScheduledRecords.length}</span>
+              <>
+                <div className="section-search-row">
+                  <label className="section-search-field">
+                    <span className="field-label-text">Search scheduled</span>
+                    <input
+                      type="search"
+                      value={scheduledSearch}
+                      onChange={e => setScheduledSearch(e.target.value)}
+                      placeholder="Search by patient, provider, appointment date, reason, tier, or status"
+                    />
+                  </label>
+                  <span className="section-search-count">
+                    {filteredScheduledRecords.length} of {scheduledRecords.length} shown
+                  </span>
+                </div>
+
+                {filteredScheduledRecords.length === 0 ? (
+                  <p className="empty-message">No scheduled patients match this search.</p>
+                ) : (
+                  <div className="history-section-stack">
+                    <section className="history-section">
+                      <div className="history-section-header">
+                        <h2 className="history-section-title">Scheduled</h2>
+                        <span className="items-count">{upcomingScheduledRecords.length}</span>
+                      </div>
+                      {upcomingScheduledRecords.length === 0
+                        ? <p className="empty-message">No upcoming scheduled patients match this search.</p>
+                        : renderScheduledRecordsTable(upcomingScheduledRecords)
+                      }
+                    </section>
+                    <section className="history-section">
+                      <div className="history-section-header">
+                        <h2 className="history-section-title">Past Scheduled</h2>
+                        <span className="items-count">{pastScheduledRecords.length}</span>
+                      </div>
+                      {pastScheduledRecords.length === 0
+                        ? <p className="empty-message">No past scheduled patients match this search.</p>
+                        : renderScheduledRecordsTable(pastScheduledRecords)
+                      }
+                    </section>
                   </div>
-                  {upcomingScheduledRecords.length === 0
-                    ? <p className="empty-message">No upcoming scheduled patients.</p>
-                    : renderScheduledRecordsTable(upcomingScheduledRecords)
-                  }
-                </section>
-                <section className="history-section">
-                  <div className="history-section-header">
-                    <h2 className="history-section-title">Past Scheduled</h2>
-                    <span className="items-count">{pastScheduledRecords.length}</span>
-                  </div>
-                  {pastScheduledRecords.length === 0
-                    ? <p className="empty-message">No appointments are past their appointment date.</p>
-                    : renderScheduledRecordsTable(pastScheduledRecords)
-                  }
-                </section>
-              </div>
+                )}
+              </>
             )
           )}
 
@@ -1468,38 +1532,59 @@ function App() {
             removedRecords.length === 0 ? (
               <p className="empty-message">No patients have been removed recently.</p>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Removed On</th>
-                    <th>Name</th>
-                    <th>Provider</th>
-                    <th>Tier</th>
-                    <th>Status</th>
-                    <th>Date Added</th>
-                    <th>Reason</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {removedRecords.map(record => (
-                    <tr key={record.id}>
-                      <td>{record.dateRemoved}</td>
-                      <td>{formatPersonName(record.firstName, record.lastName)}</td>
-                      <td>{record.provider}</td>
-                      <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
-                      <td>{record.status}</td>
-                      <td>{record.dateAdded}</td>
-                      <td>{record.reason}</td>
-                      <td>
-                        <button className="remove-button" onClick={() => requestDeleteRemovedRecord(record)}>
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <>
+                <div className="section-search-row">
+                  <label className="section-search-field">
+                    <span className="field-label-text">Search removed</span>
+                    <input
+                      type="search"
+                      value={removedSearch}
+                      onChange={e => setRemovedSearch(e.target.value)}
+                      placeholder="Search by patient, provider, removal date, reason, tier, or status"
+                    />
+                  </label>
+                  <span className="section-search-count">
+                    {filteredRemovedRecords.length} of {removedRecords.length} shown
+                  </span>
+                </div>
+
+                {filteredRemovedRecords.length === 0 ? (
+                  <p className="empty-message">No removed patients match this search.</p>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Removed On</th>
+                        <th>Name</th>
+                        <th>Provider</th>
+                        <th>Tier</th>
+                        <th>Status</th>
+                        <th>Date Added</th>
+                        <th>Reason</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRemovedRecords.map(record => (
+                        <tr key={record.id}>
+                          <td>{record.dateRemoved}</td>
+                          <td>{formatPersonName(record.firstName, record.lastName)}</td>
+                          <td>{record.provider}</td>
+                          <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
+                          <td>{record.status}</td>
+                          <td>{record.dateAdded}</td>
+                          <td>{record.reason}</td>
+                          <td>
+                            <button className="remove-button" onClick={() => requestDeleteRemovedRecord(record)}>
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
             )
           )}
         </section>
@@ -3045,6 +3130,81 @@ function labelAndConnectOpeningSegments(segments: OpeningSegment[]): OpeningSegm
       isLastPiece:  segment.endTime   === last.endTime    && segment.left === last.left  && segment.width === last.width,
     };
   });
+}
+
+// Search helpers ────────────────────────────────────────────────────────────
+
+function normalizeSearchQuery(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function searchableTextContains(query: string, values: Array<string | number | undefined | null>): boolean {
+  const normalized = normalizeSearchQuery(query);
+  if (!normalized) return true;
+
+  return values
+    .filter(value => value !== undefined && value !== null)
+    .map(String)
+    .join(" ")
+    .toLowerCase()
+    .includes(normalized);
+}
+
+function waitlistEntryMatchesSearch(entry: WaitlistEntry, query: string): boolean {
+  return searchableTextContains(query, [
+    entry.firstName,
+    entry.lastName,
+    `${entry.firstName} ${entry.lastName}`,
+    `${entry.lastName}, ${entry.firstName}`,
+    getFullName(entry),
+    entry.provider,
+    entry.reason,
+    `Tier ${entry.tier}`,
+    getTierReason(entry.tier),
+    entry.status,
+    entry.dateAdded,
+    entry.availableDays.join(" "),
+    formatAvailableTimes(entry.availableTimes),
+  ]);
+}
+
+function scheduledRecordMatchesSearch(record: ScheduledRecord, query: string): boolean {
+  return searchableTextContains(query, [
+    record.firstName,
+    record.lastName,
+    `${record.firstName} ${record.lastName}`,
+    `${record.lastName}, ${record.firstName}`,
+    formatPersonName(record.firstName, record.lastName),
+    record.provider,
+    record.reason,
+    `Tier ${record.tier}`,
+    getTierReason(record.tier),
+    record.status,
+    record.dateScheduled,
+    record.appointmentDate,
+    formatDisplayDate(record.appointmentDate),
+    record.appointmentDay,
+    formatTimeRange(record.startTime, record.endTime),
+  ]);
+}
+
+function removedRecordMatchesSearch(record: RemovedRecord, query: string): boolean {
+  return searchableTextContains(query, [
+    record.firstName,
+    record.lastName,
+    `${record.firstName} ${record.lastName}`,
+    `${record.lastName}, ${record.firstName}`,
+    formatPersonName(record.firstName, record.lastName),
+    record.provider,
+    record.reason,
+    `Tier ${record.tier}`,
+    getTierReason(record.tier),
+    record.status,
+    record.dateAdded,
+    record.dateRemoved,
+    formatDisplayDate(record.dateAdded),
+    formatDisplayDate(record.dateRemoved),
+  ]);
 }
 
 // General utilities ─────────────────────────────────────────────────────────
