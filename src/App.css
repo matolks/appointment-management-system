@@ -103,6 +103,32 @@ button { cursor: pointer; }
   transform: rotate(18deg);
 }
 
+.settings-danger-zone {
+  border-color: #3a2626;
+  background: #151010;
+}
+
+.settings-danger-zone h3 {
+  color: #e07070;
+}
+
+.btn-danger-secondary {
+  padding: 8px 18px;
+  border: 1px solid #4a3434;
+  border-radius: 8px;
+  background: transparent;
+  color: #c06060;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.btn-danger-secondary:hover {
+  background: #241818;
+  border-color: #6a4040;
+  color: #e07070;
+}
+
 /* Focus visible */
 :focus-visible {
   outline: 2px solid #5877ff;

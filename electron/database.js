@@ -164,6 +164,30 @@ function pruneAutomaticBackups() {
   }
 }
 
+export function clearOldBackups() {
+  const backupDir = getBackupDirectory();
+  const beforeFiles = fs
+    .readdirSync(backupDir)
+    .filter(
+      (fileName) =>
+        fileName.startsWith("appointment-manager-") &&
+        fileName.endsWith(".json"),
+    );
+  pruneAutomaticBackups();
+  const afterFiles = fs
+    .readdirSync(backupDir)
+    .filter(
+      (fileName) =>
+        fileName.startsWith("appointment-manager-") &&
+        fileName.endsWith(".json"),
+    );
+  return {
+    deletedCount: Math.max(0, beforeFiles.length - afterFiles.length),
+    keptCount: afterFiles.length,
+    backupDir,
+  };
+}
+
 function readBackupFile(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
   const parsed = JSON.parse(raw);

@@ -165,15 +165,21 @@ export type OpenBackupFolderResult = {
   error?: string;
 };
 
+export type ClearOldBackupsResult = {
+  deletedCount: number;
+  keptCount: number;
+  backupDir: string;
+};
+
 export type AppStorageApi = {
   load: () => Promise<PersistedAppState | null>;
   save: (state: PersistedAppState) => Promise<void>;
   reset: () => Promise<void>;
-
   exportBackup: () => Promise<BackupDialogResult>;
   importBackup: () => Promise<PersistedAppState | null>;
   restoreLatestBackup: () => Promise<PersistedAppState | null>;
   openBackupFolder: () => Promise<OpenBackupFolderResult>;
+  clearOldBackups: () => Promise<ClearOldBackupsResult>;
 };
 
 declare global {

@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld("appStorage", {
   restoreLatestBackup: () =>
     ipcRenderer.invoke("app-state:restore-latest-backup"),
   openBackupFolder: () => ipcRenderer.invoke("app-state:open-backup-folder"),
+  clearOldBackups: () => ipcRenderer.invoke("app-state:clear-old-backups"),
 });

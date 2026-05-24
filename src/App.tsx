@@ -2,6 +2,10 @@
 // The day is 8-6 correct - nick
 // is name in 1 column
 
+// should be able to add openings to the past nor schedule people in the past (maybe just have are you sure pop up instead of blocking it incase of tracking purposes)
+// When adding available times to person on waitlist, it will store the same or orverlapping times
+// Really long reason will break the thing
+
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
@@ -1105,6 +1109,31 @@ function App(){
     }
   }
 
+  async function clearOldDatabaseBackups(){
+  if(!window.appStorage){
+    setStorageError("Backup cleanup is only available in the desktop app.");
+    return;
+  }
+  const confirmed = window.confirm(
+    "Clear old automatic backups? This keeps the newest 50 automatic backups and removes automatic backups older than one year.",
+  );
+  if(!confirmed) return;
+  setIsStorageBusy(true);
+  setStorageError("");
+  setStorageMessage("");
+  try {
+    const result = await window.appStorage.clearOldBackups();
+    setStorageMessage(
+      `Old backup cleanup complete. Deleted ${result.deletedCount} backup${result.deletedCount === 1 ? "" : "s"}. Kept ${result.keptCount}.`,
+    );
+  } catch (error){
+    console.error("Failed to clear old backups:", error);
+    setStorageError("Old backup cleanup failed.");
+  } finally {
+    setIsStorageBusy(false);
+  }
+}
+
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER HELPERS
@@ -2043,10 +2072,11 @@ function App(){
                   <h3>Database backups</h3>
                   <p>
                     Export, import, restore, or open the full database backup folder.
-                    These backups include providers, openings, waitlist entries, scheduled records, and removed records.
                   </p>
                   {!storageApiAvailable && (
-                    <p className="settings-inline-warning">Database backups are only available in the packaged Electron app.</p>
+                    <p className="settings-inline-warning">
+                      Database backups are only available in the packaged Electron app.
+                    </p>
                   )}
                 </div>
                 <div className="settings-button-column">
@@ -2080,14 +2110,30 @@ function App(){
                   </button>
                 </div>
               </section>
-              <section className="settings-section">
+              <section className="settings-section settings-danger-zone">
                 <div>
-                  <h3>Reset database</h3>
-                  <p>Deletes all providers, openings, waitlist entries, scheduled records, and removed records.</p>
+                  <h3>Danger zone</h3>
+                  <p>
+                    Clear old automatic backups or reset the full local database. Backup cleanup keeps
+                    the newest 50 automatic backups and removes automatic backups older than one year.
+                  </p>
                 </div>
-                <button className="btn-danger" disabled={isStorageBusy} onClick={resetDatabase}>
-                  Reset Database
-                </button>
+                <div className="settings-button-column">
+                  <button
+                    className="btn-danger-secondary"
+                    disabled={isStorageBusy || !storageApiAvailable}
+                    onClick={clearOldDatabaseBackups}
+                  >
+                    Clear Old Backups
+                  </button>
+                  <button
+                    className="btn-danger"
+                    disabled={isStorageBusy}
+                    onClick={resetDatabase}
+                  >
+                    Reset Database
+                  </button>
+                </div>
               </section>
               {(storageMessage || storageError) && (
                 <div className={storageError ? "settings-status settings-status-error" : "settings-status"}>

@@ -10,6 +10,7 @@ import {
   importFullBackup,
   restoreLatestBackup,
   getBackupDirectory,
+  clearOldBackups,
 } from "./database.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -135,6 +136,11 @@ ipcMain.handle("app-state:open-backup-folder", async (event) => {
     opened: errorMessage === "",
     error: errorMessage || undefined,
   };
+});
+
+ipcMain.handle("app-state:clear-old-backups", async (event) => {
+  assertTrustedSender(event);
+  return clearOldBackups();
 });
 
 app.whenReady().then(createWindow);
