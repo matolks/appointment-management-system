@@ -25,7 +25,7 @@ import type {
   WaitlistHistoryPanel,
 } from "./types";
 
-// One visible slice of an opening after collision-splitting for calendar rendering
+// One visible slice of an opening
 type OpeningSegment = {
   opening: Opening;
   startTime: string;
@@ -90,40 +90,40 @@ const IMPORT_PROVIDER_COLORS = [
 //  MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-function App() {
-  // View state ────────────────────────────────────────────────────────────
-  const [activeView,           setActiveView]           = useState<ViewMode>("CALENDAR");
+function App(){
+  // View state
+  const [activeView, setActiveView] = useState<ViewMode>("CALENDAR");
   const [waitlistHistoryPanel, setWaitlistHistoryPanel] = useState<WaitlistHistoryPanel>("ACTIVE");
-  const [actionMode,           setActionMode]           = useState<ActionMode>("OPENING");
-  const [isActionPageOpen,     setIsActionPageOpen]     = useState(false);
+  const [actionMode, setActionMode] = useState<ActionMode>("OPENING");
+  const [isActionPageOpen, setIsActionPageOpen] = useState(false);
 
-  // Search state for each waitlist section/tab.
+  // Search state for each waitlist section/tab
   const [activeWaitlistSearch, setActiveWaitlistSearch] = useState("");
-  const [scheduledSearch,      setScheduledSearch]      = useState("");
-  const [removedSearch,        setRemovedSearch]        = useState("");
+  const [scheduledSearch, setScheduledSearch] = useState("");
+  const [removedSearch, setRemovedSearch] = useState("");
 
-  // Calendar interaction state ────────────────────────────────────────────
-  const [calendarLocked,    setCalendarLocked]    = useState(true);
+  // Calendar interaction state
+  const [calendarLocked, setCalendarLocked] = useState(true);
   const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(1);
-  const [hoveredOpeningId,  setHoveredOpeningId]  = useState<number | null>(null);
-  const [weekStartDate,     setWeekStartDate]     = useState<string>(getCurrentWeekStartDate);
+  const [hoveredOpeningId, setHoveredOpeningId] = useState<number | null>(null);
+  const [weekStartDate, setWeekStartDate] = useState<string>(getCurrentWeekStartDate);
 
-  // Edit / modal state ────────────────────────────────────────────────────
-  const [editingOpening,  setEditingOpening]  = useState<EditingOpening  | null>(null);
-  const [editingEntry,    setEditingEntry]    = useState<EditingEntry    | null>(null);
+  // Edit / modal state
+  const [editingOpening, setEditingOpening] = useState<EditingOpening  | null>(null);
+  const [editingEntry, setEditingEntry] = useState<EditingEntry    | null>(null);
   const [editingProvider, setEditingProvider] = useState<EditingProvider | null>(null);
-  const [pendingRemoval,  setPendingRemoval]  = useState<PendingRemoval  | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval  | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // Import / export modal state ───────────────────────────────────────────
+  // Import / export modal state 
   const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
-  const [importPreviewRows,       setImportPreviewRows]       = useState<ImportPreviewRow[]>([]);
-  const [importFileName,          setImportFileName]          = useState("");
-  const [importError,             setImportError]             = useState("");
-  const [isImportDragOver,        setIsImportDragOver]        = useState(false);
+  const [importPreviewRows, setImportPreviewRows] = useState<ImportPreviewRow[]>([]);
+  const [importFileName, setImportFileName] = useState("");
+  const [importError, setImportError] = useState("");
+  const [isImportDragOver, setIsImportDragOver] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Core data ─────────────────────────────────────────────────────────────
+  // Core data 
   const [providers, setProviders] = useState<Provider[]>([]);
 
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
@@ -131,12 +131,12 @@ function App() {
   const [openings, setOpenings] = useState<Opening[]>([]);
 
   const [scheduledRecords, setScheduledRecords] = useState<ScheduledRecord[]>([]);
-  const [removedRecords,   setRemovedRecords]   = useState<RemovedRecord[]>([]);
+  const [removedRecords, setRemovedRecords] = useState<RemovedRecord[]>([]);
 
-  // Prevents the app from overwriting saved SQLite data before the first load finishes.
+  // Prevents the app from overwriting saved SQLite data before the first load finishes
   const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
 
-  // Database backup/status UI state.
+  // Database backup/status UI state
   const [isStorageBusy, setIsStorageBusy] = useState(false);
   const [storageMessage, setStorageMessage] = useState("");
   const [storageError, setStorageError] = useState("");
@@ -144,36 +144,36 @@ function App() {
   // Stores the user's current start/end selection per eligible entry on the calendar panel
   const [scheduleSelections, setScheduleSelections] = useState<Record<number, ScheduleSelection>>({});
 
-  // "Add Opening" form state ───────────────────────────────────────────────
-  const [openingProvider,   setOpeningProvider]   = useState("");
-  const [openingDate,       setOpeningDate]       = useState(getDefaultOpeningDate);
-  const [openingStartTime,  setOpeningStartTime]  = useState("8:00");
-  const [openingEndTime,    setOpeningEndTime]    = useState("9:00");
+  // "Add Opening" form state 
+  const [openingProvider, setOpeningProvider] = useState("");
+  const [openingDate, setOpeningDate] = useState(getDefaultOpeningDate);
+  const [openingStartTime, setOpeningStartTime] = useState("8:00");
+  const [openingEndTime, setOpeningEndTime] = useState("9:00");
 
-  // "Add to Waitlist" form state ───────────────────────────────────────────
-  const [waitlistDateAdded,        setWaitlistDateAdded]        = useState(getTodayDateInputValue);
-  const [waitlistFirstName,        setWaitlistFirstName]        = useState("");
-  const [waitlistLastName,         setWaitlistLastName]         = useState("");
-  const [waitlistProvider,         setWaitlistProvider]         = useState("");
-  const [waitlistTier,             setWaitlistTier]             = useState<1 | 2 | 3>(1);
-  const [waitlistReason,           setWaitlistReason]           = useState(getTierReason(1));
-  const [waitlistAvailableDays,    setWaitlistAvailableDays]    = useState<DayCode[]>([]);
+  // "Add to Waitlist" form state 
+  const [waitlistDateAdded, setWaitlistDateAdded] = useState(getTodayDateInputValue);
+  const [waitlistFirstName, setWaitlistFirstName] = useState("");
+  const [waitlistLastName, setWaitlistLastName] = useState("");
+  const [waitlistProvider, setWaitlistProvider] = useState("");
+  const [waitlistTier, setWaitlistTier] = useState<1 | 2 | 3>(1);
+  const [waitlistReason, setWaitlistReason] = useState(getTierReason(1));
+  const [waitlistAvailableDays, setWaitlistAvailableDays] = useState<DayCode[]>([]);
   const [waitlistAvailableTimeRanges, setWaitlistAvailableTimeRanges] = useState<TimeRangeDraft[]>([]);
 
-  // "Edit Providers" form state ────────────────────────────────────────────
-  const [providerName,  setProviderName]  = useState("");
+  // "Edit Providers" form state 
+  const [providerName, setProviderName] = useState("");
   const [providerColor, setProviderColor] = useState(DEFAULT_PROVIDER_COLOR);
 
-  // Drag state ────────────────────────────────────────────────────────────
+  // Drag state
   type DragState = {
-    openingId:    number;
-    mode:         "move" | "resize-top" | "resize-bottom";
-    startY:       number;
+    openingId: number;
+    mode: "move" | "resize-top" | "resize-bottom";
+    startY: number;
     origStartMin: number;
-    origEndMin:   number;
-    colHeightPx:  number;
+    origEndMin: number;
+    colHeightPx: number;
   };
-  const dragRef    = useRef<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
 
   const buildPersistedAppState = useCallback((): PersistedAppState => ({
@@ -185,7 +185,7 @@ function App() {
     removedRecords,
   }), [providers, entries, openings, scheduledRecords, removedRecords]);
 
-  function clearCurrentAppState() {
+  function clearCurrentAppState(){
     setProviders([]);
     setEntries([]);
     setOpenings([]);
@@ -222,12 +222,11 @@ function App() {
     clearImportPreview();
   }
 
-  function applyPersistedAppState(saved: PersistedAppState | null) {
-    if (!saved) {
+  function applyPersistedAppState(saved: PersistedAppState | null){
+    if(!saved){
       clearCurrentAppState();
       return;
     }
-
     setProviders(saved.providers ?? []);
     setEntries(saved.entries ?? []);
     setOpenings(saved.openings ?? []);
@@ -249,8 +248,8 @@ function App() {
     clearImportPreview();
   }
 
-  async function saveCurrentStateToStorage() {
-    if (!window.appStorage || !hasLoadedStorage) return;
+  async function saveCurrentStateToStorage(){
+    if(!window.appStorage || !hasLoadedStorage) return;
     await window.appStorage.save(buildPersistedAppState());
   }
 
@@ -258,17 +257,16 @@ function App() {
   // EFFECTS
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Load saved state from SQLite when running inside Electron.
+  // Load saved state from SQLite
   useEffect(() => {
-    async function loadStoredState() {
-      if (!window.appStorage) {
+    async function loadStoredState(){
+      if(!window.appStorage){
         setHasLoadedStorage(true);
         return;
       }
-
       try {
         const saved = await window.appStorage.load();
-        if (saved) {
+        if(saved){
           setProviders(saved.providers ?? []);
           setEntries(saved.entries ?? []);
           setOpenings(saved.openings ?? []);
@@ -276,26 +274,23 @@ function App() {
           setRemovedRecords(saved.removedRecords ?? []);
         }
         setHasLoadedStorage(true);
-      } catch (error) {
+      } catch (error){
         console.error("Failed to load app state from SQLite:", error);
         setStorageError("Database load failed. Automatic saving is disabled until the app is restarted.");
       }
     }
-
     loadStoredState();
   }, []);
 
-  // Save state to SQLite after the initial load has completed.
+  // Save state to SQLite 
   useEffect(() => {
-    if (!hasLoadedStorage || !window.appStorage) return;
-
+    if(!hasLoadedStorage || !window.appStorage) return;
     const saveTimeoutId = window.setTimeout(() => {
       window.appStorage?.save(buildPersistedAppState()).catch(error => {
         console.error("Failed to save app state to SQLite:", error);
         setStorageError("Database save failed. Check the console for details.");
       });
     }, STORAGE_SAVE_DEBOUNCE_MS);
-
     return () => window.clearTimeout(saveTimeoutId);
   }, [hasLoadedStorage, buildPersistedAppState]);
 
@@ -306,32 +301,26 @@ function App() {
   // Entries whose scheduled/removed records expire are also removed from the backing entries array.
   useEffect(() => {
     const today = startOfLocalDay(new Date());
-
     const staleScheduledEntryIds = new Set(
       scheduledRecords
         .filter(r => isDateOlderThanRetentionDays(r.appointmentDate, today))
         .map(r => r.entryId),
     );
-
     const staleRemovedEntryIds = new Set(
       removedRecords
         .filter(r => isDateOlderThanRetentionDays(r.dateRemoved, today))
         .map(r => r.entryId),
     );
-
     setOpenings(prev =>
       filterWithoutStateChange(prev, o => !isDateOlderThanRetentionDays(o.date, today)),
     );
-
     setScheduledRecords(prev =>
       filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.appointmentDate, today)),
     );
-
     setRemovedRecords(prev =>
       filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.dateRemoved, today)),
     );
-
-    if (staleScheduledEntryIds.size > 0 || staleRemovedEntryIds.size > 0) {
+    if(staleScheduledEntryIds.size > 0 || staleRemovedEntryIds.size > 0){
       setEntries(prev =>
         filterWithoutStateChange(prev, e =>
           !(e.status === "SCHEDULED" && staleScheduledEntryIds.has(e.id)) &&
@@ -340,7 +329,6 @@ function App() {
       );
     }
   }, [scheduledRecords, removedRecords]);
-
 
   // Keep provider dropdown state valid after providers are added, removed, imported, or renamed.
   useEffect(() => {
@@ -355,7 +343,7 @@ function App() {
 
   // If the selected opening is deleted (by cleanup or the user), deselect it
   useEffect(() => {
-    if (selectedOpeningId !== null && !openings.some(o => o.id === selectedOpeningId)) {
+    if(selectedOpeningId !== null && !openings.some(o => o.id === selectedOpeningId)){
       setSelectedOpeningId(null);
     }
   }, [openings, selectedOpeningId]);
@@ -366,23 +354,22 @@ function App() {
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
     const d = dragRef.current;
-    if (!d) return;
+    if(!d) return;
     e.preventDefault();
-
     const dyMin  = ((e.clientY - d.startY) / d.colHeightPx) * CAL_SPAN;
     const minDur = 30; // minimum opening duration in minutes
     setOpenings(prev => prev.map(o => {
-      if (o.id !== d.openingId) return o;
+      if(o.id !== d.openingId) return o;
       let newStart = d.origStartMin;
       let newEnd   = d.origEndMin;
-      if (d.mode === "move") {
+      if(d.mode === "move"){
         const dur = d.origEndMin - d.origStartMin;
         newStart = snapToInterval(d.origStartMin + dyMin, SNAP);
         newEnd   = newStart + dur;
         // Clamp so the block doesn't leave the calendar bounds.
-        if (newStart < CAL_START_MIN) { newStart = CAL_START_MIN; newEnd = newStart + dur; }
-        if (newEnd   > CAL_END_MIN)   { newEnd   = CAL_END_MIN;   newStart = newEnd - dur; }
-      } else if (d.mode === "resize-top") {
+        if(newStart < CAL_START_MIN){ newStart = CAL_START_MIN; newEnd = newStart + dur; }
+        if(newEnd   > CAL_END_MIN)   { newEnd   = CAL_END_MIN;   newStart = newEnd - dur; }
+      } else if(d.mode === "resize-top"){
         newStart = snapToInterval(d.origStartMin + dyMin, SNAP);
         newStart = Math.max(CAL_START_MIN, Math.min(newStart, d.origEndMin - minDur));
       } else {
@@ -395,7 +382,7 @@ function App() {
 
   const handlePointerUp = useCallback(() => {
     const finishedDragId = dragRef.current?.openingId ?? null;
-    if (finishedDragId !== null) {
+    if(finishedDragId !== null){
       // After a drag, merge any now-overlapping openings from the same provider.
       setOpenings(prev => mergeSameProviderOpenings(prev, finishedDragId));
       setSelectedOpeningId(finishedDragId);
@@ -403,7 +390,7 @@ function App() {
     dragRef.current = null;
     setDraggingId(null);
     window.removeEventListener("pointermove", handlePointerMove);
-    window.removeEventListener("pointerup",   handlePointerUp);
+    window.removeEventListener("pointerup", handlePointerUp);
   }, [handlePointerMove]);
 
   function startDrag(
@@ -411,31 +398,31 @@ function App() {
     opening: Opening,
     mode: DragState["mode"],
     colHeightPx: number,
-  ) {
-    if (calendarLocked) return;
+  ){
+    if(calendarLocked) return;
     e.stopPropagation();
     dragRef.current = {
-      openingId:    opening.id,
+      openingId: opening.id,
       mode,
-      startY:       e.clientY,
+      startY: e.clientY,
       origStartMin: timeToMinutes(opening.startTime),
-      origEndMin:   timeToMinutes(opening.endTime),
+      origEndMin: timeToMinutes(opening.endTime),
       colHeightPx,
     };
     setDraggingId(opening.id);
     window.addEventListener("pointermove", handlePointerMove, { passive: false });
-    window.addEventListener("pointerup",   handlePointerUp);
+    window.addEventListener("pointerup", handlePointerUp);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // SORT STATE
   // ─────────────────────────────────────────────────────────────────────────
 
-  const [sortField,     setSortField]     = useState<SortField>("dateAdded");
+  const [sortField, setSortField] = useState<SortField>("dateAdded");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
-  function handleSortChange(next: SortField) {
-    if (next === sortField) {
+  function handleSortChange(next: SortField){
+    if(next === sortField){
       setSortDirection(d => d === "asc" ? "desc" : "asc");
     } else {
       setSortField(next);
@@ -447,7 +434,7 @@ function App() {
   // DERIVED / MEMOIZED DATA
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Build one date object per weekday for the currently-displayed week
+  // Build one date object per weekday for the displayed week
   const weekDates = useMemo(() => {
     const start = parseLocalDate(weekStartDate);
     return DAY_LABELS.map((day, i) => {
@@ -456,12 +443,10 @@ function App() {
       return { ...day, date, dateString: toDateInputValue(date) };
     });
   }, [weekStartDate]);
-
   const selectedOpening = openings.find(o => o.id === selectedOpeningId) ?? null;
-
   // Eligible entries for the selected opening: same provider, waitlisted, availability overlap
   const eligibleEntries = useMemo(() => {
-    if (!selectedOpening) return [];
+    if(!selectedOpening) return [];
     return entries
       .filter(e =>
         e.status === "WAITLISTED" &&
@@ -474,106 +459,92 @@ function App() {
         : new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime(),
       );
   }, [entries, selectedOpening]);
-
   const waitlistedCount = entries.filter(e => e.status === "WAITLISTED").length;
   const scheduledCount  = scheduledRecords.length;
-
-  const importValidRows   = importPreviewRows.filter(row => row.status !== "ERROR");
-  const importErrorRows   = importPreviewRows.filter(row => row.status === "ERROR");
+  const importValidRows = importPreviewRows.filter(row => row.status !== "ERROR");
+  const importErrorRows = importPreviewRows.filter(row => row.status === "ERROR");
   const importWarningRows = importPreviewRows.filter(row => row.status === "WARNING");
-
   const todayDateString = getTodayDateInputValue();
-
   const filteredScheduledRecords = useMemo(
     () => scheduledRecords.filter(record => scheduledRecordMatchesSearch(record, scheduledSearch)),
     [scheduledRecords, scheduledSearch],
   );
-
   const upcomingScheduledRecords = [...filteredScheduledRecords]
     .filter(r => !isPastDate(r.appointmentDate, todayDateString))
     .sort(compareScheduledRecordsByAppointment);
-
   const pastScheduledRecords = [...filteredScheduledRecords]
     .filter(r => isPastDate(r.appointmentDate, todayDateString))
     .sort((a, b) => compareScheduledRecordsByAppointment(b, a));
-
   const filteredRemovedRecords = useMemo(
     () => removedRecords.filter(record => removedRecordMatchesSearch(record, removedSearch)),
     [removedRecords, removedSearch],
   );
-
   const sortedWaitlistEntries = useMemo(() => {
     const waitlistedOnly = entries
       .filter(e => e.status === "WAITLISTED")
       .filter(e => waitlistEntryMatchesSearch(e, activeWaitlistSearch));
-
     return [...waitlistedOnly].sort((a, b) => {
       const dir = sortDirection === "asc" ? 1 : -1;
-      switch (sortField) {
+      switch (sortField){
         case "dateAdded": return (new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime()) * dir;
-        case "name":      return getFullName(a).localeCompare(getFullName(b)) * dir;
-        case "provider":  return a.provider.localeCompare(b.provider) * dir;
-        case "tier":      return (a.tier - b.tier) * dir;
-        default:          return a.status.localeCompare(b.status) * dir; // "status" sort field
+        case "name": return getFullName(a).localeCompare(getFullName(b)) * dir;
+        case "provider": return a.provider.localeCompare(b.provider) * dir;
+        case "tier": return (a.tier - b.tier) * dir;
+        default: return a.status.localeCompare(b.status) * dir; // "status" sort field
       }
     });
   }, [entries, sortField, sortDirection, activeWaitlistSearch]);
-
-  // Derived label for the opening duration preview in the Add Opening form
+  // Label for the opening duration preview in the Add Opening form
   const openingDurationLabel = (() => {
     const diff = (timeToMinutes(openingEndTime) - timeToMinutes(openingStartTime)) / 60;
-    if (diff <= 0)     return "—";
-    if (diff === 1)    return "1 hr";
-    if (diff % 1 === 0) return `${diff} hrs`;
+    if(diff <= 0) return "—";
+    if(diff === 1) return "1 hr";
+    if(diff % 1 === 0) return `${diff} hrs`;
     return `${diff.toFixed(1)} hrs`;
   })();
-
   const waitlistInitials = (waitlistFirstName[0] ?? "") + (waitlistLastName[0] ?? "");
 
   // ─────────────────────────────────────────────────────────────────────────
   // MUTATIONS — NAVIGATION & ACTIONS
   // ─────────────────────────────────────────────────────────────────────────
 
-  function goToPreviousWeek() { setWeekStartDate(d => moveDateByDays(d, -7)); setSelectedOpeningId(null); }
-  function goToNextWeek()     { setWeekStartDate(d => moveDateByDays(d,  7)); setSelectedOpeningId(null); }
-
-  function openActionPage() {
+  function goToPreviousWeek(){ setWeekStartDate(d => moveDateByDays(d, -7)); setSelectedOpeningId(null); }
+  function goToNextWeek(){ setWeekStartDate(d => moveDateByDays(d,  7)); setSelectedOpeningId(null); }
+  function openActionPage(){
     setActionMode(activeView === "WAITLIST" ? "WAITLIST_ENTRY" : "OPENING");
     setIsActionPageOpen(true);
   }
 
-  function clearImportPreview() {
+  function clearImportPreview(){
     setImportPreviewRows([]);
     setImportFileName("");
     setImportError("");
     setIsImportDragOver(false);
-    if (importFileInputRef.current) importFileInputRef.current.value = "";
+    if(importFileInputRef.current) importFileInputRef.current.value = "";
   }
 
-  function closeImportExportModal() {
+  function closeImportExportModal(){
     setIsImportExportModalOpen(false);
     clearImportPreview();
   }
 
-  function handleImportFile(file: File | null) {
-    if (!file) return;
+  function handleImportFile(file: File | null){
+    if(!file) return;
     setImportError("");
     setImportFileName(file.name);
-
     const reader = new FileReader();
     reader.onload = event => {
       try {
         const data = event.target?.result;
-        if (!data) throw new Error("Unable to read the selected file.");
+        if(!data) throw new Error("Unable to read the selected file.");
         const workbook = XLSX.read(data, { type: "array", cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
-        if (!firstSheetName) throw new Error("The workbook does not contain a sheet.");
-
+        if(!firstSheetName) throw new Error("The workbook does not contain a sheet.");
         const parsedRows = parseImportedWaitlistSheet(workbook.Sheets[firstSheetName]);
         const annotatedRows = annotateImportedProviders(parsedRows, providers);
         setImportPreviewRows(annotatedRows);
-        if (annotatedRows.length === 0) setImportError("No waitlist rows were found in the first sheet.");
-      } catch (error) {
+        if(annotatedRows.length === 0) setImportError("No waitlist rows were found in the first sheet.");
+      } catch (error){
         setImportPreviewRows([]);
         setImportError(error instanceof Error ? error.message : "The file could not be imported.");
       }
@@ -582,61 +553,56 @@ function App() {
     reader.readAsArrayBuffer(file);
   }
 
-  function confirmImportRows() {
+  function confirmImportRows(){
     const rowsToImport = importPreviewRows.filter(row => row.status !== "ERROR");
-    if (rowsToImport.length === 0) return;
-
+    if(rowsToImport.length === 0) return;
     const providerNameByKey = new Map(providers.map(p => [p.name.trim().toLowerCase(), p.name]));
     const providersToAdd: Provider[] = [];
-
-    for (const row of rowsToImport) {
+    for (const row of rowsToImport){
       const providerName = row.provider.trim();
       const key = providerName.toLowerCase();
-      if (!key || providerNameByKey.has(key)) continue;
+      if(!key || providerNameByKey.has(key)) continue;
       providerNameByKey.set(key, providerName);
       providersToAdd.push({
         name:  providerName,
         color: IMPORT_PROVIDER_COLORS[(providers.length + providersToAdd.length) % IMPORT_PROVIDER_COLORS.length],
       });
     }
-
     let nextEntryId = getNextId(entries);
     const importedEntries: WaitlistEntry[] = rowsToImport.map(row => {
       const providerKey = row.provider.trim().toLowerCase();
       return {
-        id:             nextEntryId++,
-        dateAdded:      row.dateAdded,
-        firstName:      row.firstName,
-        lastName:       row.lastName,
-        provider:       providerNameByKey.get(providerKey) ?? row.provider.trim(),
-        tier:           row.tier,
-        reason:         row.reason,
-        availableDays:  row.availableDays,
+        id: nextEntryId++,
+        dateAdded: row.dateAdded,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        provider: providerNameByKey.get(providerKey) ?? row.provider.trim(),
+        tier: row.tier,
+        reason: row.reason,
+        availableDays: row.availableDays,
         availableTimes: row.availableTimes,
-        status:         "WAITLISTED",
+        status: "WAITLISTED",
       };
     });
-
-    if (providersToAdd.length > 0) setProviders(prev => [...prev, ...providersToAdd]);
+    if(providersToAdd.length > 0) setProviders(prev => [...prev, ...providersToAdd]);
     setEntries(prev => [...prev, ...importedEntries]);
     setActiveView("WAITLIST");
     setWaitlistHistoryPanel("ACTIVE");
     closeImportExportModal();
   }
 
-  function exportWaitlistToExcel() {
+  function exportWaitlistToExcel(){
     const rows = entries
       .filter(entry => entry.status === "WAITLISTED")
       .map(entry => ({
         "Date added": formatDateForExport(entry.dateAdded),
-        Name:         formatPersonName(entry.firstName, entry.lastName),
-        Provider:     entry.provider,
-        Tier:         entry.tier,
-        Reason:       entry.reason,
-        Dates:        entry.availableDays.join(","),
-        Times:        formatAvailableTimesForExport(entry.availableTimes),
+        Name: formatPersonName(entry.firstName, entry.lastName),
+        Provider: entry.provider,
+        Tier: entry.tier,
+        Reason: entry.reason,
+        Dates: entry.availableDays.join(","),
+        Times: formatAvailableTimesForExport(entry.availableTimes),
       }));
-
     const worksheet = XLSX.utils.json_to_sheet(rows, {
       header: ["Date added", "Name", "Provider", "Tier", "Reason", "Dates", "Times"],
     });
@@ -653,45 +619,42 @@ function App() {
     entryId: number,
     appointmentStartTime: string,
     appointmentEndTime: string,
-  ) {
-    if (!selectedOpening) return;
+  ){
+    if(!selectedOpening) return;
     const entry = entries.find(e => e.id === entryId);
-    if (!entry) return;
+    if(!entry) return;
 
-    const apptStart    = timeToMinutes(appointmentStartTime);
-    const apptEnd      = timeToMinutes(appointmentEndTime);
+    const apptStart = timeToMinutes(appointmentStartTime);
+    const apptEnd = timeToMinutes(appointmentEndTime);
     const openingStart = timeToMinutes(selectedOpening.startTime);
-    const openingEnd   = timeToMinutes(selectedOpening.endTime);
+    const openingEnd = timeToMinutes(selectedOpening.endTime);
 
-    // Guard: appointment must be at least 1 hour and fully within the opening
-    if (apptEnd - apptStart < 60)                                     return;
-    if (apptStart < openingStart || apptEnd > openingEnd)             return;
-    if (!getEligibleScheduleWindows(entry, selectedOpening).some(
+    // Guard: appointment must be at least 1 hour and fully within the openin---------------------------------------------
+    if(apptEnd - apptStart < 60) return;
+    if(apptStart < openingStart || apptEnd > openingEnd) return;
+    if(!getEligibleScheduleWindows(entry, selectedOpening).some(
       w => apptStart >= w.start && apptEnd <= w.end)
-    )                                                                  return;
-
+    ) return;
     setScheduledRecords(prev => [
       {
-        id:              getNextId(prev),
-        entryId:         entry.id,
-        dateScheduled:   toDateInputValue(new Date()),
-        firstName:       entry.firstName,
-        lastName:        entry.lastName,
-        provider:        entry.provider,
-        tier:            entry.tier,
-        reason:          entry.reason,
-        status:          "SCHEDULED",
+        id: getNextId(prev),
+        entryId: entry.id,
+        dateScheduled: toDateInputValue(new Date()),
+        firstName: entry.firstName,
+        lastName: entry.lastName,
+        provider: entry.provider,
+        tier: entry.tier,
+        reason: entry.reason,
+        status: "SCHEDULED",
         appointmentDate: selectedOpening.date,
-        appointmentDay:  selectedOpening.day,
-        startTime:       appointmentStartTime,
-        endTime:         appointmentEndTime,
+        appointmentDay: selectedOpening.day,
+        startTime: appointmentStartTime,
+        endTime: appointmentEndTime,
       },
       ...prev,
     ]);
-
     setEntries(prev => prev.map(e => e.id === entryId ? { ...e, status: "SCHEDULED" } : e));
     setOpenings(prev => splitOpeningForAppointment(prev, selectedOpening.id, appointmentStartTime, appointmentEndTime));
-
     // Clear the stored selection for this entry and deselect the opening
     setScheduleSelections(prev => {
       const next = { ...prev };
@@ -705,61 +668,57 @@ function App() {
   // MUTATIONS — ADD FORMS
   // ─────────────────────────────────────────────────────────────────────────
 
-  function addOpening() {
-    if (!openingProvider || !openingDate || !openingStartTime || !openingEndTime) return;
-    if (timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)) {
+  function addOpening(){
+    if(!openingProvider || !openingDate || !openingStartTime || !openingEndTime) return;
+    if(timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)){
       alert("End time must be after start time.");
       return;
     }
     // Weekends are outside the calendar's M–F range; warn and abort
     const dayCode = getDayCodeFromDate(openingDate);
-    if (!dayCode) {
+    if(!dayCode){
       alert("Openings can only be added on weekdays (Mon–Fri).");
       return;
     }
-
     const nextOpening: Opening = {
-      id:        getNextId(openings),
-      provider:  openingProvider,
-      date:      openingDate,
-      day:       dayCode,
+      id: getNextId(openings),
+      provider: openingProvider,
+      date: openingDate,
+      day: dayCode,
       startTime: openingStartTime,
-      endTime:   openingEndTime,
+      endTime: openingEndTime,
     };
-
     // Merge immediately in case it overlaps an existing opening from the same provider
     setOpenings(prev => mergeSameProviderOpenings([...prev, nextOpening], nextOpening.id));
     setSelectedOpeningId(nextOpening.id);
   }
 
-  function addProvider() {
+  function addProvider(){
     const cleanName = providerName.trim();
-    if (!cleanName) return;
-    if (providers.some(p => p.name.toLowerCase() === cleanName.toLowerCase())) return;
+    if(!cleanName) return;
+    if(providers.some(p => p.name.toLowerCase() === cleanName.toLowerCase())) return;
     setProviders(prev => [...prev, { name: cleanName, color: providerColor }]);
     setProviderName("");
     setProviderColor(DEFAULT_PROVIDER_COLOR);
   }
 
-  function addWaitlistEntry() {
+  function addWaitlistEntry(){
     const firstName = waitlistFirstName.trim();
-    const lastName  = waitlistLastName.trim();
-    const reason    = waitlistReason.trim();
-    if (!waitlistDateAdded || !firstName || !lastName || !waitlistProvider || !reason) return;
-
+    const lastName = waitlistLastName.trim();
+    const reason = waitlistReason.trim();
+    if(!waitlistDateAdded || !firstName || !lastName || !waitlistProvider || !reason) return;
     const nextEntry: WaitlistEntry = {
-      id:            getNextId(entries),
-      dateAdded:     waitlistDateAdded,
+      id: getNextId(entries),
+      dateAdded: waitlistDateAdded,
       firstName,
       lastName,
-      provider:      waitlistProvider,
-      tier:          waitlistTier,
+      provider: waitlistProvider,
+      tier: waitlistTier,
       reason,
-      availableDays:  waitlistAvailableDays,
+      availableDays: waitlistAvailableDays,
       availableTimes: serializeTimeRangeDrafts(waitlistAvailableTimeRanges),
-      status:         "WAITLISTED",
+      status: "WAITLISTED",
     };
-
     setEntries(prev => [...prev, nextEntry]);
     resetWaitlistForm();
     setActiveView("WAITLIST");
@@ -770,22 +729,19 @@ function App() {
   // MUTATIONS — EDIT SAVES
   // ─────────────────────────────────────────────────────────────────────────
 
-  function saveEditingOpening() {
-    if (!editingOpening) return;
-    if (timeToMinutes(editingOpening.endTime) <= timeToMinutes(editingOpening.startTime)) {
+  function saveEditingOpening(){
+    if(!editingOpening) return;
+    if(timeToMinutes(editingOpening.endTime) <= timeToMinutes(editingOpening.startTime)){
       alert("End time must be after start time.");
       return;
     }
-
     const dayCode = getDayCodeFromDate(editingOpening.date);
-    if (!dayCode) {
+    if(!dayCode){
       alert("Openings can only be saved on weekdays (Mon–Fri).");
       return;
     }
-
     // Do not persist edit-only metadata like _original into app state / SQLite.
     const { _original, ...cleanOpening } = editingOpening;
-
     setOpenings(prev =>
       mergeSameProviderOpenings(
         prev.map(o => o.id === cleanOpening.id
@@ -799,30 +755,27 @@ function App() {
     setEditingOpening(null);
   }
 
-  function saveEditingEntry() {
-    if (!editingEntry) return;
+  function saveEditingEntry(){
+    if(!editingEntry) return;
     setEntries(prev => prev.map(e => e.id === editingEntry.id ? editingEntry : e));
     setEditingEntry(null);
   }
 
-  function saveEditingProvider() {
-    if (!editingProvider) return;
+  function saveEditingProvider(){
+    if(!editingProvider) return;
     const oldName = editingProvider._originalName ?? editingProvider.name;
     const newName = editingProvider.name.trim();
-    if (!newName) return;
-
+    if(!newName) return;
     const duplicateProvider = providers.some(
       p => p.name !== oldName && p.name.trim().toLowerCase() === newName.toLowerCase(),
     );
-    if (duplicateProvider) {
+    if(duplicateProvider){
       alert("A provider with that name already exists.");
       return;
     }
-
     setProviders(prev => prev.map(p => p.name === oldName ? { name: newName, color: editingProvider.color } : p));
-
     // If the provider was renamed, update all references across openings, entries, and history.
-    if (oldName !== newName) {
+    if(oldName !== newName){
       setOpenings(prev => prev.map(o => o.provider === oldName ? { ...o, provider: newName } : o));
       setEntries(prev  => prev.map(e => e.provider === oldName ? { ...e, provider: newName } : e));
       setScheduledRecords(prev => prev.map(r => r.provider === oldName ? { ...r, provider: newName } : r));
@@ -836,55 +789,54 @@ function App() {
   // ─────────────────────────────────────────────────────────────────────────
 
   // Each requestRemove* function populates the confirmation modal.
-  function requestRemoveEntry(entry: WaitlistEntry) {
+  function requestRemoveEntry(entry: WaitlistEntry){
     setPendingRemoval({
-      type:         "ENTRY",
-      id:           entry.id,
-      title:        "Remove waitlist entry?",
-      message:      `This will remove ${getFullName(entry)} from the active waitlist.`,
+      type: "ENTRY",
+      id: entry.id,
+      title: "Remove waitlist entry?",
+      message: `This will remove ${getFullName(entry)} from the active waitlist.`,
       confirmLabel: "Remove Entry",
     });
   }
 
-  function requestRemoveOpening(opening: Opening) {
+  function requestRemoveOpening(opening: Opening){
     setPendingRemoval({
-      type:         "OPENING",
-      id:           opening.id,
-      title:        "Remove opening?",
-      message:      `This will delete the ${opening.provider} opening on ${formatDisplayDate(opening.date)} from ${formatTimeRange(opening.startTime, opening.endTime)}.`,
+      type: "OPENING",
+      id: opening.id,
+      title: "Remove opening?",
+      message: `This will delete the ${opening.provider} opening on ${formatDisplayDate(opening.date)} from ${formatTimeRange(opening.startTime, opening.endTime)}.`,
       confirmLabel: "Remove Opening",
     });
   }
 
-  function requestDeleteScheduledRecord(record: ScheduledRecord) {
+  function requestDeleteScheduledRecord(record: ScheduledRecord){
     setPendingRemoval({
-      type:         "SCHEDULED_RECORD",
-      id:           record.id,
-      entryId:      record.entryId,
-      title:        "Delete scheduled record?",
-      message:      `This will permanently delete the scheduled record for ${formatPersonName(record.firstName, record.lastName)}.`,
+      type: "SCHEDULED_RECORD",
+      id: record.id,
+      entryId: record.entryId,
+      title: "Delete scheduled record?",
+      message: `This will permanently delete the scheduled record for ${formatPersonName(record.firstName, record.lastName)}.`,
       confirmLabel: "Delete Record",
     });
   }
 
-  function requestDeleteRemovedRecord(record: RemovedRecord) {
+  function requestDeleteRemovedRecord(record: RemovedRecord){
     setPendingRemoval({
-      type:         "REMOVED_RECORD",
-      id:           record.id,
-      entryId:      record.entryId,
-      title:        "Delete removed record?",
-      message:      `This will permanently delete the removed record for ${formatPersonName(record.firstName, record.lastName)}.`,
+      type: "REMOVED_RECORD",
+      id: record.id,
+      entryId: record.entryId,
+      title: "Delete removed record?",
+      message: `This will permanently delete the removed record for ${formatPersonName(record.firstName, record.lastName)}.`,
       confirmLabel: "Delete Record",
     });
   }
 
-  function requestRemoveProvider(provider: Provider) {
+  function requestRemoveProvider(provider: Provider){
     const waitlistedPatientCount = entries.filter(e => e.provider === provider.name && e.status === "WAITLISTED").length;
     const scheduledPatientCount = scheduledRecords.filter(r => r.provider === provider.name).length;
     const removedPatientCount = removedRecords.filter(r => r.provider === provider.name).length;
     const totalPatientReferences = waitlistedPatientCount + scheduledPatientCount + removedPatientCount;
-
-    if (totalPatientReferences > 0) {
+    if(totalPatientReferences > 0){
       alert(
         `Cannot remove ${provider.name} because ${totalPatientReferences} patient record(s) still reference this provider. ` +
         `Active waitlist: ${waitlistedPatientCount}. Scheduled history: ${scheduledPatientCount}. Removed history: ${removedPatientCount}. ` +
@@ -892,34 +844,32 @@ function App() {
       );
       return;
     }
-
     setPendingRemoval({
-      type:         "PROVIDER",
-      name:         provider.name,
-      title:        "Remove provider?",
-      message:      `This will remove ${provider.name} and delete all of their current openings. No patient records reference this provider.`,
+      type: "PROVIDER",
+      name: provider.name,
+      title: "Remove provider?",
+      message: `This will remove ${provider.name} and delete all of their current openings. No patient records reference this provider.`,
       confirmLabel: "Remove Provider",
     });
   }
 
-  function confirmPendingRemoval() {
-    if (!pendingRemoval) return;
-
-    switch (pendingRemoval.type) {
+  function confirmPendingRemoval(){
+    if(!pendingRemoval) return;
+    switch (pendingRemoval.type){
       case "ENTRY": {
         const removedEntry = entries.find(e => e.id === pendingRemoval.id);
-        if (removedEntry) {
+        if(removedEntry){
           setRemovedRecords(prev => [{
-            id:          getNextId(prev),
-            entryId:     removedEntry.id,
+            id: getNextId(prev),
+            entryId: removedEntry.id,
             dateRemoved: toDateInputValue(new Date()),
-            dateAdded:   removedEntry.dateAdded,
-            firstName:   removedEntry.firstName,
-            lastName:    removedEntry.lastName,
-            provider:    removedEntry.provider,
-            tier:        removedEntry.tier,
-            reason:      removedEntry.reason,
-            status:      "REMOVED",
+            dateAdded: removedEntry.dateAdded,
+            firstName: removedEntry.firstName,
+            lastName: removedEntry.lastName,
+            provider: removedEntry.provider,
+            tier: removedEntry.tier,
+            reason: removedEntry.reason,
+            status: "REMOVED",
           }, ...prev]);
         }
         setEntries(prev => prev.map(e => e.id === pendingRemoval.id ? { ...e, status: "REMOVED" } : e));
@@ -927,7 +877,7 @@ function App() {
       }
       case "OPENING": {
         setOpenings(prev => prev.filter(o => o.id !== pendingRemoval.id));
-        if (selectedOpeningId === pendingRemoval.id) setSelectedOpeningId(null);
+        if(selectedOpeningId === pendingRemoval.id) setSelectedOpeningId(null);
         break;
       }
       case "SCHEDULED_RECORD": {
@@ -947,12 +897,11 @@ function App() {
         setProviders(prev => prev.filter(p => p.name !== removedName));
         setOpenings(prev  => prev.filter(o => o.provider !== removedName));
         // If the removed provider was selected in either form, fall back to the first remaining.
-        if (openingProvider  === removedName) setOpeningProvider(fallback);
-        if (waitlistProvider === removedName) setWaitlistProvider(fallback);
+        if(openingProvider  === removedName) setOpeningProvider(fallback);
+        if(waitlistProvider === removedName) setWaitlistProvider(fallback);
         break;
       }
     }
-
     setPendingRemoval(null);
   }
 
@@ -960,44 +909,44 @@ function App() {
   // SECTION 13: MUTATIONS — AVAILABILITY / TIME RANGE FORM HELPERS
   // ─────────────────────────────────────────────────────────────────────────
 
-  function toggleWaitlistAvailableDay(day: DayCode) {
+  function toggleWaitlistAvailableDay(day: DayCode){
     setWaitlistAvailableDays(prev =>
       prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day],
     );
   }
 
-  function addWaitlistAvailableTimeRange() {
+  function addWaitlistAvailableTimeRange(){
     setWaitlistAvailableTimeRanges(prev => [
       ...prev,
       { id: getNextTimeRangeId(prev), startTime: "9:00", endTime: "10:00" },
     ]);
   }
 
-  function updateWaitlistAvailableTimeRange(id: number, field: "startTime" | "endTime", value: string) {
+  function updateWaitlistAvailableTimeRange(id: number, field: "startTime" | "endTime", value: string){
     setWaitlistAvailableTimeRanges(prev =>
       prev.map(r => r.id === id ? normalizeDraftTimeRange({ ...r, [field]: value }, field) : r),
     );
   }
 
-  function removeWaitlistAvailableTimeRange(id: number) {
+  function removeWaitlistAvailableTimeRange(id: number){
     setWaitlistAvailableTimeRanges(prev => prev.filter(r => r.id !== id));
   }
 
   // Mirror of the above for the edit-entry modal
-  function addEditingEntryTimeRange() {
-    if (!editingEntry) return;
+  function addEditingEntryTimeRange(){
+    if(!editingEntry) return;
     setEditingEntry({ ...editingEntry, availableTimes: [...editingEntry.availableTimes, "9:00-10:00"] });
   }
 
-  function updateEditingEntryTimeRange(index: number, field: "startTime" | "endTime", value: string) {
-    if (!editingEntry) return;
+  function updateEditingEntryTimeRange(index: number, field: "startTime" | "endTime", value: string){
+    if(!editingEntry) return;
     const ranges = editingEntry.availableTimes.map(rangeToDraft);
     ranges[index] = normalizeDraftTimeRange({ ...ranges[index], [field]: value }, field);
     setEditingEntry({ ...editingEntry, availableTimes: serializeTimeRangeDrafts(ranges) });
   }
 
-  function removeEditingEntryTimeRange(index: number) {
-    if (!editingEntry) return;
+  function removeEditingEntryTimeRange(index: number){
+    if(!editingEntry) return;
     setEditingEntry({
       ...editingEntry,
       availableTimes: editingEntry.availableTimes.filter((_, i) => i !== index),
@@ -1010,10 +959,10 @@ function App() {
     value: string,
     entry: WaitlistEntry,
     opening: Opening,
-  ) {
+  ){
     const current = getResolvedScheduleSelection(entry, opening, scheduleSelections[entryId]);
     const windows = getEligibleScheduleWindows(entry, opening);
-    const next    = normalizeScheduleSelection({ ...current, [field]: value }, field, windows);
+    const next = normalizeScheduleSelection({ ...current, [field]: value }, field, windows);
     setScheduleSelections(prev => ({ ...prev, [entryId]: next }));
   }
 
@@ -1021,7 +970,7 @@ function App() {
   // FORM RESET
   // ─────────────────────────────────────────────────────────────────────────
 
-  function resetWaitlistForm() {
+  function resetWaitlistForm(){
     setWaitlistFirstName("");
     setWaitlistLastName("");
     setWaitlistTier(1);
@@ -1030,92 +979,81 @@ function App() {
     setWaitlistAvailableTimeRanges([]);
   }
 
-  async function exportDatabaseBackup() {
-    if (!window.appStorage) {
+  async function exportDatabaseBackup(){
+    if(!window.appStorage){
       setStorageError("Database backups are only available in the desktop app.");
       return;
     }
-
     setIsStorageBusy(true);
     setStorageError("");
     setStorageMessage("");
-
     try {
       await saveCurrentStateToStorage();
       const result = await window.appStorage.exportBackup();
-
-      if (result.canceled) {
+      if(result.canceled){
         setStorageMessage("Backup export canceled.");
       } else {
         setStorageMessage(result.filePath ? `Backup exported to ${result.filePath}.` : "Backup exported.");
       }
-    } catch (error) {
+    } catch (error){
       console.error("Failed to export database backup:", error);
-      setStorageError("Backup export failed. Check the console for details.");
+      setStorageError("Backup export failed.");
     } finally {
       setIsStorageBusy(false);
     }
   }
 
-  async function importDatabaseBackup() {
-    if (!window.appStorage) {
+  async function importDatabaseBackup(){
+    if(!window.appStorage){
       setStorageError("Database backups are only available in the desktop app.");
       return;
     }
-
     const confirmed = window.confirm(
       "Import a database backup? This will replace all current providers, openings, waitlist entries, scheduled records, and removed records.",
     );
-    if (!confirmed) return;
-
+    if(!confirmed) return;
     setIsStorageBusy(true);
     setStorageError("");
     setStorageMessage("");
-
     try {
       const importedState = await window.appStorage.importBackup();
-      if (!importedState) {
+      if(!importedState){
         setStorageMessage("Backup import canceled.");
         return;
       }
-
       applyPersistedAppState(importedState);
       setHasLoadedStorage(true);
       setStorageMessage("Backup imported and applied.");
-    } catch (error) {
+    } catch (error){
       console.error("Failed to import database backup:", error);
-      setStorageError("Backup import failed. Check the console for details.");
+      setStorageError("Backup import failed.");
     } finally {
       setIsStorageBusy(false);
     }
   }
 
-  async function restoreLatestDatabaseBackup() {
-    if (!window.appStorage) {
+  async function restoreLatestDatabaseBackup(){
+    if(!window.appStorage){
       setStorageError("Database backups are only available in the desktop app.");
       return;
     }
-
     const confirmed = window.confirm(
       "Restore the latest automatic backup? This will replace the current database state.",
     );
-    if (!confirmed) return;
-
+    if(!confirmed) return;
     setIsStorageBusy(true);
     setStorageError("");
     setStorageMessage("");
-
     try {
       const restoredState = await window.appStorage.restoreLatestBackup();
-      if (!restoredState) {
+      if(!restoredState){
         setStorageMessage("No automatic backup was found.");
         return;
       }
-
       applyPersistedAppState(restoredState);
       setHasLoadedStorage(true);
       setStorageMessage("Latest automatic backup restored.");
-    } catch (error) {
+    } catch (error){
       console.error("Failed to restore latest backup:", error);
       setStorageError("Backup restore failed. Check the console for details.");
     } finally {
@@ -1123,49 +1061,45 @@ function App() {
     }
   }
 
-  async function openDatabaseBackupFolder() {
-    if (!window.appStorage) {
+  async function openDatabaseBackupFolder(){
+    if(!window.appStorage){
       setStorageError("Database backups are only available in the desktop app.");
       return;
     }
-
     setIsStorageBusy(true);
     setStorageError("");
     setStorageMessage("");
-
     try {
       const result = await window.appStorage.openBackupFolder();
-      if (result.opened) {
+      if(result.opened){
         setStorageMessage("Backup folder opened.");
       } else {
         setStorageError(result.error ?? "Backup folder could not be opened.");
       }
-    } catch (error) {
+    } catch (error){
       console.error("Failed to open backup folder:", error);
-      setStorageError("Backup folder could not be opened. Check the console for details.");
+      setStorageError("Backup folder could not be opened.");
     } finally {
       setIsStorageBusy(false);
     }
   }
 
-  async function resetDatabase() {
+  async function resetDatabase(){
     const confirmed = window.confirm(
       "Reset the database? This will permanently delete all providers, openings, waitlist entries, scheduled records, and removed records.",
     );
-    if (!confirmed) return;
-
+    if(!confirmed) return;
     setIsStorageBusy(true);
     setStorageError("");
     setStorageMessage("");
-
     try {
-      if (window.appStorage) await window.appStorage.reset();
+      if(window.appStorage) await window.appStorage.reset();
       clearCurrentAppState();
       setHasLoadedStorage(true);
       setStorageMessage("Database reset. A backup was created before reset when saved data existed.");
-    } catch (error) {
+    } catch (error){
       console.error("Failed to reset database:", error);
-      setStorageError("Database reset failed. Check the console for details.");
+      setStorageError("Database reset failed.");
     } finally {
       setIsStorageBusy(false);
     }
@@ -1177,7 +1111,7 @@ function App() {
   // ─────────────────────────────────────────────────────────────────────────
 
   /* Shared table for both "Scheduled" and "Past Scheduled" sections. */
-  function renderScheduledRecordsTable(records: ScheduledRecord[]) {
+  function renderScheduledRecordsTable(records: ScheduledRecord[]){
     return (
       <table>
         <thead>
@@ -1225,7 +1159,6 @@ function App() {
 
   return (
     <main className="app-shell">
-
       {/* Top navigation bar */}
       <header className="top-bar">
         <nav className="main-nav">
@@ -1276,7 +1209,6 @@ function App() {
       {/* ── CALENDAR VIEW ─────────────────────────────────────────────────── */}
       {!isActionPageOpen && activeView === "CALENDAR" && (
         <section className="calendar-page">
-
           {/* Legend + lock panel */}
           <aside className="legend-panel">
             <h2>Legend</h2>
@@ -1288,7 +1220,6 @@ function App() {
                 </div>
               ))}
             </div>
-
             <h3>Lock Calendar</h3>
             <div className="lock-section">
               <button
@@ -1317,13 +1248,11 @@ function App() {
               <h1>Week of {formatDisplayDate(weekStartDate)}</h1>
               <button className="arrow-button" onClick={goToNextWeek}>→</button>
             </div>
-
             <div className="calendar-grid">
               {weekDates.map(day => {
-                const dayOpenings     = openings.filter(o => o.date === day.dateString);
+                const dayOpenings = openings.filter(o => o.date === day.dateString);
                 const openingSegments = buildOpeningSegments(dayOpenings);
-                const isToday         = day.dateString === todayDateString;
-
+                const isToday = day.dateString === todayDateString;
                 return (
                   <div className={["day-column", isToday ? "today-column" : ""].join(" ")} key={day.dateString}>
                     <div className={["day-header", isToday ? "today-header" : ""].join(" ")}>
@@ -1331,7 +1260,6 @@ function App() {
                       <strong>{day.date.getDate()}</strong>
                       {isToday && <em>Today</em>}
                     </div>
-
                     <div className="day-body">
                       {/* Hourly time labels */}
                       {TIME_SLOT_LABELS.map(time => (
@@ -1339,35 +1267,33 @@ function App() {
                           <span>{formatDisplayTime(time)}</span>
                         </div>
                       ))}
-
                       {/* Opening blocks */}
                       {openingSegments.map(segment => {
-                        const color     = providers.find(p => p.name === segment.opening.provider)?.color ?? "#999";
+                        const color = providers.find(p => p.name === segment.opening.provider)?.color ?? "#999";
                         const isDragging = draggingId === segment.opening.id;
                         // Always read live opening data so dragging re-positions in real time.
-                        const opening   = openings.find(o => o.id === segment.opening.id) ?? segment.opening;
-
+                        const opening = openings.find(o => o.id === segment.opening.id) ?? segment.opening;
                         return (
                           <div
                             key={`${segment.opening.id}-${segment.startTime}-${segment.index}`}
                             className={[
                               "opening-block",
-                              selectedOpeningId === segment.opening.id ? "selected"        : "",
-                              hoveredOpeningId  === segment.opening.id ? "opening-hovered" : "",
+                              selectedOpeningId === segment.opening.id ? "selected" : "",
+                              hoveredOpeningId === segment.opening.id ? "opening-hovered" : "",
                               segment.isFirstPiece ? "first-piece" : "",
-                              segment.isLastPiece  ? "last-piece"  : "",
-                              isDragging           ? "is-dragging" : "",
-                              calendarLocked       ? "is-locked"   : "is-draggable",
+                              segment.isLastPiece ? "last-piece" : "",
+                              isDragging ? "is-dragging" : "",
+                              calendarLocked ? "is-locked" : "is-draggable",
                             ].join(" ")}
                             style={{
                               backgroundColor: color,
-                              top:    isDragging ? `${getOpeningTopPct(opening.startTime)}%`             : `${getOpeningTopPct(segment.startTime)}%`,
+                              top: isDragging ? `${getOpeningTopPct(opening.startTime)}%` : `${getOpeningTopPct(segment.startTime)}%`,
                               height: isDragging ? `${getOpeningHeightPct(opening.startTime, opening.endTime)}%` : `${getOpeningHeightPct(segment.startTime, segment.endTime)}%`,
-                              left:   segment.left,
-                              width:  segment.width,
-                              right:  "auto",
+                              left: segment.left,
+                              width: segment.width,
+                              right: "auto",
                             }}
-                            onClick={() => { if (!isDragging) setSelectedOpeningId(segment.opening.id); }}
+                            onClick={() => { if(!isDragging) setSelectedOpeningId(segment.opening.id); }}
                             onMouseEnter={() => setHoveredOpeningId(segment.opening.id)}
                             onMouseLeave={() => setHoveredOpeningId(null)}
                           >
@@ -1381,7 +1307,6 @@ function App() {
                                 }}
                               />
                             )}
-
                             {/* Move handle + label */}
                             <div
                               className="opening-move-area"
@@ -1399,7 +1324,6 @@ function App() {
                                 </>
                               )}
                             </div>
-
                             {/* Inline edit button (visible on hover/select) */}
                             {segment.showLabel && (
                               <button
@@ -1410,7 +1334,6 @@ function App() {
                                 ✎
                               </button>
                             )}
-
                             {/* Bottom resize handle (unlock mode only) */}
                             {!calendarLocked && segment.isLastPiece && (
                               <div
@@ -1430,7 +1353,6 @@ function App() {
               })}
             </div>
           </section>
-
           {/* Eligible patients panel */}
           <aside className="eligible-panel">
             {selectedOpening ? (
@@ -1455,103 +1377,96 @@ function App() {
                     </div>
                   </div>
                 </div>
-
                 <div className="eligible-list-header">
                   <h3>Eligible Waitlist</h3>
                   <span className="items-count">{eligibleEntries.length}</span>
                 </div>
-
                 {eligibleEntries.length === 0 ? (
                   <p className="empty-message">No eligible waitlist entries for this opening.</p>
                 ) : (
                   <div className="eligible-list">
                     {eligibleEntries.map(entry => {
-                      if (!selectedOpening) return null;
+                      if(!selectedOpening) return null;
                       const windows      = getEligibleScheduleWindows(entry, selectedOpening);
                       const selection    = getResolvedScheduleSelection(entry, selectedOpening, scheduleSelections[entry.id]);
                       const startOptions = getScheduleStartOptions(windows);
                       const endOptions   = getScheduleEndOptions(windows, selection.startTime);
 
                       return (
-<article className="eligible-card" key={entry.id}>
-  <div className="eligible-card-top">
-    <div className="eligible-name-block">
-      <div className="eligible-name-row">
-        <h4 className="eligible-patient-name">{getFullName(entry)}</h4>
-        <span className="eligible-date-added">
-          Added {formatDateForExport(entry.dateAdded)}
-        </span>
-      </div>
-
-      <span className={`tier-badge tier-${entry.tier}`}>
-        Tier {entry.tier}
-      </span>
-    </div>
-
-    <button
-      className="eligible-schedule-button"
-      onClick={() =>
-        scheduleEntryForSelectedOpening(
-          entry.id,
-          selection.startTime,
-          selection.endTime
-        )
-      }
-    >
-      Schedule
-    </button>
-  </div>
-
-  <div className="eligible-schedule-row">
-    <label>
-      <span>Start</span>
-      <select
-        value={selection.startTime}
-        onChange={e =>
-          updateScheduleSelection(
-            entry.id,
-            "startTime",
-            e.target.value,
-            entry,
-            selectedOpening
-          )
-        }
-      >
-        {startOptions.map(t => (
-          <option key={t} value={t}>
-            {formatDisplayTime(t)}
-          </option>
-        ))}
-      </select>
-    </label>
-
-    <label>
-      <span>End</span>
-      <select
-        value={selection.endTime}
-        onChange={e =>
-          updateScheduleSelection(
-            entry.id,
-            "endTime",
-            e.target.value,
-            entry,
-            selectedOpening
-          )
-        }
-      >
-        {endOptions.map(t => (
-          <option key={t} value={t}>
-            {formatDisplayTime(t)}
-          </option>
-        ))}
-      </select>
-    </label>
-  </div>
-
-  <p className="eligible-availability">
-    Available: {formatAvailability(entry.availableDays, entry.availableTimes)}
-  </p>
-</article>
+                        <article className="eligible-card" key={entry.id}>
+                          <div className="eligible-card-top">
+                            <div className="eligible-name-block">
+                              <div className="eligible-name-row">
+                                <h4 className="eligible-patient-name">{getFullName(entry)}</h4>
+                                <span className="eligible-date-added">
+                                  Added {formatDateForExport(entry.dateAdded)}
+                                </span>
+                              </div>
+                              <span className={`tier-badge tier-${entry.tier}`}>
+                                Tier {entry.tier}
+                              </span>
+                            </div>
+                            <button
+                              className="eligible-schedule-button"
+                              onClick={() =>
+                                scheduleEntryForSelectedOpening(
+                                  entry.id,
+                                  selection.startTime,
+                                  selection.endTime
+                                )
+                              }
+                            >
+                              Schedule
+                            </button>
+                          </div>
+                          <div className="eligible-schedule-row">
+                            <label>
+                              <span>Start</span>
+                              <select
+                                value={selection.startTime}
+                                onChange={e =>
+                                  updateScheduleSelection(
+                                    entry.id,
+                                    "startTime",
+                                    e.target.value,
+                                    entry,
+                                    selectedOpening
+                                  )
+                                }
+                              >
+                                {startOptions.map(t => (
+                                  <option key={t} value={t}>
+                                    {formatDisplayTime(t)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>End</span>
+                              <select
+                                value={selection.endTime}
+                                onChange={e =>
+                                  updateScheduleSelection(
+                                    entry.id,
+                                    "endTime",
+                                    e.target.value,
+                                    entry,
+                                    selectedOpening
+                                  )
+                                }
+                              >
+                                {endOptions.map(t => (
+                                  <option key={t} value={t}>
+                                    {formatDisplayTime(t)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <p className="eligible-availability">
+                            Available: {formatAvailability(entry.availableDays, entry.availableTimes)}
+                          </p>
+                        </article>
                       );
                     })}
                   </div>
@@ -1563,8 +1478,7 @@ function App() {
           </aside>
         </section>
       )}
-
-      {/* WAITLIST VIEW ─────────────────────────────────────────────────── */}
+      {/* WAITLIST VIEW */}
       {!isActionPageOpen && activeView === "WAITLIST" && (
         <section className="waitlist-page">
           <div className="page-header-row">
@@ -1589,7 +1503,6 @@ function App() {
               </button>
             </div>
           </div>
-
           {/* Active waitlist table */}
           {waitlistHistoryPanel === "ACTIVE" && (
             <>
@@ -1607,7 +1520,6 @@ function App() {
                   {sortedWaitlistEntries.length} of {waitlistedCount} shown
                 </span>
               </div>
-
               {sortedWaitlistEntries.length === 0 ? (
                 <p className="empty-message">
                   {waitlistedCount === 0 ? "No patients are on the active waitlist." : "No active waitlist patients match this search."}
@@ -1670,7 +1582,6 @@ function App() {
                     {filteredScheduledRecords.length} of {scheduledRecords.length} shown
                   </span>
                 </div>
-
                 {filteredScheduledRecords.length === 0 ? (
                   <p className="empty-message">No scheduled patients match this search.</p>
                 ) : (
@@ -1700,7 +1611,6 @@ function App() {
               </>
             )
           )}
-
           {/* Removed history */}
           {waitlistHistoryPanel === "REMOVED" && (
             removedRecords.length === 0 ? (
@@ -1721,7 +1631,6 @@ function App() {
                     {filteredRemovedRecords.length} of {removedRecords.length} shown
                   </span>
                 </div>
-
                 {filteredRemovedRecords.length === 0 ? (
                   <p className="empty-message">No removed patients match this search.</p>
                 ) : (
@@ -1763,11 +1672,9 @@ function App() {
           )}
         </section>
       )}
-
-      {/* ACTION PAGES ──────────────────────────────────────────────────── */}
+      {/* ACTION PAGES */}
       {isActionPageOpen && (
         <section className="action-page">
-
           {/* ADD OPENING */}
           {actionMode === "OPENING" && (
             <>
@@ -1777,7 +1684,6 @@ function App() {
                 </div>
                 <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
               </div>
-
               <div className="form-section-label">Opening details</div>
               <div className="form-row" style={{ marginBottom: 16 }}>
                 <label className="field-label-block">
@@ -1817,9 +1723,7 @@ function App() {
                 <button className="btn-secondary" onClick={() => setIsActionPageOpen(false)}>Cancel</button>
                 <button className="btn-primary"   onClick={addOpening}>+ Add Opening</button>
               </div>
-
               <div className="form-divider" />
-
               <div className="items-section">
                 <div className="items-section-header">
                   <div className="form-section-label" style={{ margin: 0, border: "none", padding: 0 }}>
@@ -1854,7 +1758,6 @@ function App() {
               </div>
             </>
           )}
-
           {/* EDIT PROVIDERS */}
           {actionMode === "EDIT_PROVIDERS" && (
             <>
@@ -1862,7 +1765,6 @@ function App() {
                 <div><h1 className="action-page-title">Edit Providers</h1></div>
                 <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
               </div>
-
               <div className="form-section-label">Add provider</div>
               <div className="form-row" style={{ marginBottom: 24, alignItems: "flex-end" }}>
                 <label className="field-label-block field-grow">
@@ -1889,9 +1791,7 @@ function App() {
                   </span>
                 </div>
               )}
-
               <div className="form-divider" />
-
               <div className="items-section">
                 <div className="items-section-header">
                   <div className="form-section-label" style={{ margin: 0, border: "none", padding: 0 }}>
@@ -1914,7 +1814,6 @@ function App() {
               </div>
             </>
           )}
-
           {/* ADD TO WAITLIST */}
           {actionMode === "WAITLIST_ENTRY" && (
             <>
@@ -1924,7 +1823,6 @@ function App() {
                 </div>
                 <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
               </div>
-
               <div className="form-section-label">Patient</div>
               <div className="form-row" style={{ marginBottom: 16 }}>
                 <label className="field-label-block opening-date-field">
@@ -1940,7 +1838,6 @@ function App() {
                   <input value={waitlistLastName} onChange={e => setWaitlistLastName(e.target.value)} placeholder="Last name" />
                 </label>
               </div>
-
               {(waitlistFirstName || waitlistLastName) && (
                 <div className="name-preview-bar" style={{ marginBottom: 16 }}>
                   <div className="name-avatar">{waitlistInitials.toUpperCase() || "–"}</div>
@@ -1949,7 +1846,6 @@ function App() {
                   </span>
                 </div>
               )}
-
               <div className="form-row" style={{ marginBottom: 24 }}>
                 <label className="field-label-block field-grow">
                   <span className="field-label-text">Provider</span>
@@ -1962,7 +1858,6 @@ function App() {
                   <input value={waitlistReason} onChange={e => setWaitlistReason(e.target.value)} placeholder="Reason" />
                 </label>
               </div>
-
               <div className="form-section-label">Priority tier</div>
               <div className="tier-card-grid" style={{ marginBottom: 24 }}>
                 {([1, 2, 3] as const).map(tier => (
@@ -1978,7 +1873,6 @@ function App() {
                   </button>
                 ))}
               </div>
-
               <div className="form-section-label">Availability</div>
               <div style={{ marginBottom: 14 }}>
                 <div className="field-label-text" style={{ marginBottom: 8 }}>Available days</div>
@@ -1995,7 +1889,6 @@ function App() {
                 </div>
                 <p className="field-hint">Leave blank to indicate any day</p>
               </div>
-
               <div className="time-range-builder" style={{ marginBottom: 28 }}>
                 <div className="time-range-builder-header">
                   <span className="field-label-text">Available times</span>
@@ -2025,7 +1918,6 @@ function App() {
                   </div>
                 )}
               </div>
-
               <div className="form-submit-row">
                 <button className="btn-secondary" onClick={() => setIsActionPageOpen(false)}>Cancel</button>
                 <button className="btn-primary"   onClick={addWaitlistEntry}>+ Add to Waitlist</button>
@@ -2034,8 +1926,7 @@ function App() {
           )}
         </section>
       )}
-
-      {/* ── IMPORT / EXPORT MODAL ─────────────────────────────────────────── */}
+      {/* IMPORT / EXPORT MODAL */}
       {isImportExportModalOpen && (
         <div className="modal-backdrop" onClick={closeImportExportModal}>
           <div className="modal-box modal-xl import-export-modal" onClick={e => e.stopPropagation()}>
@@ -2046,7 +1937,6 @@ function App() {
               </div>
               <button className="close-action-button" onClick={closeImportExportModal}>x</button>
             </div>
-
             <input
               ref={importFileInputRef}
               type="file"
@@ -2054,7 +1944,6 @@ function App() {
               style={{ display: "none" }}
               onChange={e => handleImportFile(e.target.files?.[0] ?? null)}
             />
-
             <div className="import-export-actions">
               <div
                 className={["import-dropzone", isImportDragOver ? "drag-over" : ""].join(" ")}
@@ -2072,7 +1961,6 @@ function App() {
                   Select File
                 </button>
               </div>
-
               <div className="export-card">
                 <div>
                   <h3>Export active waitlist</h3>
@@ -2083,9 +1971,7 @@ function App() {
                 </button>
               </div>
             </div>
-
             {importError && <p className="import-error-message">{importError}</p>}
-
             {importPreviewRows.length > 0 && (
               <section className="import-preview-section">
                 <div className="import-preview-header">
@@ -2133,7 +2019,6 @@ function App() {
                 </div>
               </section>
             )}
-
             <div className="modal-footer">
               <button className="btn-secondary" onClick={closeImportExportModal}>Close</button>
               <button className="btn-primary" disabled={importValidRows.length === 0} onClick={confirmImportRows}>
@@ -2143,8 +2028,7 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* ── SETTINGS MODAL ───────────────────────────────────────────────── */}
+      {/* SETTINGS MODAL */}
       {isSettingsModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsSettingsModalOpen(false)}>
           <div className="modal-box settings-modal" onClick={e => e.stopPropagation()}>
@@ -2153,7 +2037,6 @@ function App() {
               <button className="close-action-button" onClick={() => setIsSettingsModalOpen(false)}>x
               </button>
             </div>
-
             <div className="settings-stack">
               <section className="settings-section">
                 <div>
@@ -2166,7 +2049,6 @@ function App() {
                     <p className="settings-inline-warning">Database backups are only available in the packaged Electron app.</p>
                   )}
                 </div>
-
                 <div className="settings-button-column">
                   <button
                     className="btn-primary"
@@ -2198,7 +2080,6 @@ function App() {
                   </button>
                 </div>
               </section>
-
               <section className="settings-section">
                 <div>
                   <h3>Reset database</h3>
@@ -2208,7 +2089,6 @@ function App() {
                   Reset Database
                 </button>
               </section>
-
               {(storageMessage || storageError) && (
                 <div className={storageError ? "settings-status settings-status-error" : "settings-status"}>
                   {storageError || storageMessage}
@@ -2218,7 +2098,7 @@ function App() {
           </div>
         </div>
       )}
-      {/* ── CONFIRM REMOVAL MODAL ─────────────────────────────────────────── */}
+      {/* CONFIRM REMOVAL MODAL */}
       {pendingRemoval && (
         <div className="modal-backdrop" onClick={() => setPendingRemoval(null)}>
           <div className="modal-box confirm-modal" onClick={e => e.stopPropagation()}>
@@ -2234,8 +2114,7 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* EDIT OPENING MODAL ────────────────────────────────────────────── */}
+      {/* EDIT OPENING MODAL */}
       {editingOpening && (
         <div className="modal-backdrop" onClick={() => setEditingOpening(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -2291,8 +2170,7 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* ── EDIT ENTRY MODAL ──────────────────────────────────────────────── */}
+      {/* EDIT ENTRY MODAL */}
       {editingEntry && (
         <div className="modal-backdrop" onClick={() => setEditingEntry(null)}>
           <div className="modal-box modal-wide" onClick={e => e.stopPropagation()}>
@@ -2418,8 +2296,7 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* EDIT PROVIDER MODAL ───────────────────────────────────────────── */}
+      {/* EDIT PROVIDER MODAL */}
       {editingProvider && (
         <div className="modal-backdrop" onClick={() => setEditingProvider(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -2475,49 +2352,40 @@ function App() {
 // IMPORT / EXPORT HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function parseImportedWaitlistSheet(sheet: XLSX.WorkSheet): ImportPreviewRow[] {
+function parseImportedWaitlistSheet(sheet: XLSX.WorkSheet): ImportPreviewRow[]{
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     raw: true,
     defval: "",
   }) as unknown[][];
-
   const indexedRows = rows
     .map((cells, index) => ({ cells, rowNumber: index + 1 }))
     .filter(row => !isImportedSheetRowEmpty(row.cells));
-
-  if (indexedRows.length === 0) return [];
-
+  if(indexedRows.length === 0) return [];
   const firstRowIsHeader = looksLikeImportHeaderRow(indexedRows[0].cells);
-
-  if (!firstRowIsHeader) {
+  if(!firstRowIsHeader){
     return indexedRows
       .filter(row => !isImportedSheetRowEmpty(row.cells))
       .map((row, index) => parseImportedWaitlistRowFromCells(row.cells, row.rowNumber, index + 1));
   }
-
   const headerMap = buildImportHeaderMap(indexedRows[0].cells);
   const dataRows = indexedRows.slice(1);
-
   return dataRows
     .filter(row => !isImportedSheetRowEmpty(row.cells))
     .map((row, index) => parseImportedWaitlistRowFromHeaderMap(row.cells, headerMap, row.rowNumber, index + 1));
 }
 
-function annotateImportedProviders(rows: ImportPreviewRow[], providers: Provider[]): ImportPreviewRow[] {
+function annotateImportedProviders(rows: ImportPreviewRow[], providers: Provider[]): ImportPreviewRow[]{
   const existing = new Set(providers.map(p => p.name.trim().toLowerCase()));
   const seenNew = new Set<string>();
-
   return rows.map(row => {
-    if (row.status === "ERROR") return row;
+    if(row.status === "ERROR") return row;
     const key = row.provider.trim().toLowerCase();
-    if (!key || existing.has(key)) return row;
-
+    if(!key || existing.has(key)) return row;
     const message = seenNew.has(key)
       ? "New provider already listed in this import."
       : "New provider will be added.";
     seenNew.add(key);
-
     return {
       ...row,
       messages: [...row.messages, message],
@@ -2532,33 +2400,32 @@ function parseImportedWaitlistRowFromHeaderMap(
   id: number,
 ): ImportPreviewRow {
   const getCell = (...names: string[]) => {
-    for (const name of names) {
+    for (const name of names){
       const index = headerMap.get(normalizeImportHeader(name));
-      if (index !== undefined) return cells[index];
+      if(index !== undefined) return cells[index];
     }
     return "";
   };
-
   return parseImportedWaitlistRowFromValues({
     dateAdded: getCell("dateadded", "date"),
-    name:      getCell("name", "patient", "patientname"),
-    provider:  getCell("provider", "doctor"),
-    tier:      getCell("tier", "priority", "prioritytier"),
-    reason:    getCell("reason", "notes"),
-    dates:     getCell("dates", "availabledays", "days"),
-    times:     getCell("times", "availabletimes", "availability", "time"),
+    name: getCell("name", "patient", "patientname"),
+    provider: getCell("provider", "doctor"),
+    tier: getCell("tier", "priority", "prioritytier"),
+    reason: getCell("reason", "notes"),
+    dates: getCell("dates", "availabledays", "days"),
+    times: getCell("times", "availabletimes", "availability", "time"),
   }, rowNumber, id);
 }
 
 function parseImportedWaitlistRowFromCells(cells: unknown[], rowNumber: number, id: number): ImportPreviewRow {
   return parseImportedWaitlistRowFromValues({
     dateAdded: cells[0],
-    name:      cells[1],
-    provider:  cells[2],
-    tier:      cells[3],
-    reason:    cells[4],
-    dates:     cells[5],
-    times:     cells[6],
+    name: cells[1],
+    provider: cells[2],
+    tier: cells[3],
+    reason: cells[4],
+    dates: cells[5],
+    times: cells[6],
   }, rowNumber, id);
 }
 
@@ -2577,46 +2444,38 @@ function parseImportedWaitlistRowFromValues(
 ): ImportPreviewRow {
   const raw = {
     dateAdded: cellToImportText(values.dateAdded),
-    name:      cellToImportText(values.name),
-    provider:  cellToImportText(values.provider),
-    tier:      cellToImportText(values.tier),
-    reason:    cellToImportText(values.reason),
-    dates:     cellToImportText(values.dates),
-    times:     cellToImportText(values.times),
+    name: cellToImportText(values.name),
+    provider: cellToImportText(values.provider),
+    tier: cellToImportText(values.tier),
+    reason: cellToImportText(values.reason),
+    dates: cellToImportText(values.dates),
+    times: cellToImportText(values.times),
   };
-
   const messages: string[] = [];
-
   const parsedDate = parseImportedDate(values.dateAdded);
-  if (!parsedDate) messages.push("Invalid date added.");
-
+  if(!parsedDate) messages.push("Invalid date added.");
   const parsedName = parseImportedName(raw.name);
-  if (!parsedName) messages.push("Missing name.");
-
+  if(!parsedName) messages.push("Missing name.");
   const provider = raw.provider.trim();
-  if (!provider) messages.push("Missing provider.");
-
+  if(!provider) messages.push("Missing provider.");
   const tier = parseImportedTier(raw.tier);
-  if (!tier) messages.push("Tier must be 1, 2, or 3.");
-
+  if(!tier) messages.push("Tier must be 1, 2, or 3.");
   const parsedDays = parseImportedDays(raw.dates);
-  if (parsedDays.error) messages.push(parsedDays.error);
-
+  if(parsedDays.error) messages.push(parsedDays.error);
   const parsedTimes = parseImportedTimeRanges(raw.times);
-  if (parsedTimes.error) messages.push(parsedTimes.error);
-
+  if(parsedTimes.error) messages.push(parsedTimes.error);
   return {
     id,
     rowNumber,
-    dateAdded:      parsedDate ?? "",
-    firstName:      parsedName?.firstName ?? "",
-    lastName:       parsedName?.lastName ?? raw.name.trim(),
+    dateAdded: parsedDate ?? "",
+    firstName: parsedName?.firstName ?? "",
+    lastName: parsedName?.lastName ?? raw.name.trim(),
     provider,
-    tier:           tier ?? 1,
-    reason:         raw.reason.trim() || getTierReason(tier ?? 1),
-    availableDays:  parsedDays.days,
+    tier: tier ?? 1,
+    reason: raw.reason.trim() || getTierReason(tier ?? 1),
+    availableDays: parsedDays.days,
     availableTimes: parsedTimes.ranges,
-    status:         messages.length > 0 ? "ERROR" : "READY",
+    status: messages.length > 0 ? "ERROR" : "READY",
     messages,
     raw,
   };
@@ -2624,12 +2483,10 @@ function parseImportedWaitlistRowFromValues(
 
 function buildImportHeaderMap(headerCells: unknown[]): Map<string, number> {
   const map = new Map<string, number>();
-
   headerCells.forEach((cell, index) => {
     const normalized = normalizeImportHeader(cellToImportText(cell));
-    if (normalized) map.set(normalized, index);
+    if(normalized) map.set(normalized, index);
   });
-
   return map;
 }
 
@@ -2651,74 +2508,65 @@ function looksLikeImportHeaderRow(cells: unknown[]): boolean {
 }
 
 function cellToImportText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (value instanceof Date) return toDateInputValue(value);
+  if(value === null || value === undefined) return "";
+  if(value instanceof Date) return toDateInputValue(value);
   return String(value).trim();
 }
 
 function parseImportedDate(value: unknown): string | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return toDateInputValue(value);
-
-  if (typeof value === "number" && Number.isFinite(value)) {
+  if(value instanceof Date && !Number.isNaN(value.getTime())) return toDateInputValue(value);
+  if(typeof value === "number" && Number.isFinite(value)){
     const parsed = XLSX.SSF.parse_date_code(value);
-    if (parsed) {
+    if(parsed){
       const date = new Date(parsed.y, parsed.m - 1, parsed.d);
       return toDateInputValue(date);
     }
   }
-
   const text = cellToImportText(value).trim();
   const match = text.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2}|\d{4}))?$/);
-  if (!match) return null;
-
+  if(!match) return null;
   const month = Number(match[1]);
-  const day   = Number(match[2]);
-  let year    = match[3] ? Number(match[3]) : new Date().getFullYear();
-  if (year < 100) year += 2000;
-
+  const day = Number(match[2]);
+  let year = match[3] ? Number(match[3]) : new Date().getFullYear();
+  if(year < 100) year += 2000;
   const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  if(date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
   return toDateInputValue(date);
 }
 
 function parseImportedName(value: string): { firstName: string; lastName: string } | null {
   const clean = value.trim().replace(/\s+/g, " ");
-  if (!clean) return null;
-
-  if (clean.includes(",")) {
+  if(!clean) return null;
+  if(clean.includes(",")){
     const [last, ...rest] = clean.split(",");
     return { firstName: rest.join(",").trim(), lastName: last.trim() };
   }
-
   const parts = clean.split(" ");
-  if (parts.length === 1) return { firstName: "", lastName: parts[0] };
+  if(parts.length === 1) return { firstName: "", lastName: parts[0] };
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
 function parseImportedTier(value: string): 1 | 2 | 3 | null {
   const match = value.match(/[123]/);
-  if (!match) return null;
+  if(!match) return null;
   const tier = Number(match[0]);
   return tier === 1 || tier === 2 || tier === 3 ? tier : null;
 }
 
 function parseImportedDays(value: string): { days: DayCode[]; error?: string } {
   const text = value.trim();
-  if (!text || /^any$/i.test(text)) return { days: [] };
-
+  if(!text || /^any$/i.test(text)) return { days: [] };
   const days: DayCode[] = [];
   const invalid: string[] = [];
   const tokens = text.split(/[\s,;/]+/).map(t => t.trim()).filter(Boolean);
-
-  for (const token of tokens) {
+  for (const token of tokens){
     const parsed = parseImportedDayCode(token);
-    if (!parsed) {
+    if(!parsed){
       invalid.push(token);
       continue;
     }
-    if (!days.includes(parsed)) days.push(parsed);
+    if(!days.includes(parsed)) days.push(parsed);
   }
-
   return invalid.length > 0
     ? { days, error: `Invalid date value: ${invalid.join(", ")}.` }
     : { days };
@@ -2726,89 +2574,110 @@ function parseImportedDays(value: string): { days: DayCode[]; error?: string } {
 
 function parseImportedDayCode(token: string): DayCode | null {
   const clean = token.toLowerCase().replace(/[^a-z]/g, "");
-  if (["m", "mon", "monday"].includes(clean)) return "M";
-  if (["t", "tu", "tue", "tues", "tuesday"].includes(clean)) return "Tu";
-  if (["w", "wed", "wednesday"].includes(clean)) return "W";
-  if (["th", "thu", "thur", "thurs", "thursday"].includes(clean)) return "Th";
-  if (["f", "fri", "friday"].includes(clean)) return "F";
+  if(["m", "mon", "monday"].includes(clean)) return "M";
+  if(["t", "tu", "tue", "tues", "tuesday"].includes(clean)) return "Tu";
+  if(["w", "wed", "wednesday"].includes(clean)) return "W";
+  if(["th", "thu", "thur", "thurs", "thursday"].includes(clean)) return "Th";
+  if(["f", "fri", "friday"].includes(clean)) return "F";
   return null;
 }
 
 function parseImportedTimeRanges(value: string): { ranges: string[]; error?: string } {
-  const text = value.trim();
-  if (!text || /^any$/i.test(text)) return { ranges: [] };
-
-  const ranges: string[] = [];
-  const invalid: string[] = [];
-  // Split on commas or semicolons only; avoid splitting on "/" which can appear in time notations
-  const pieces = text
-    .replace(/[–—]/g, "-")
-    .replace(/\bto\b/gi, "-")
-    .split(/[,;]+/)
-    .map(piece => piece.trim())
-    .filter(Boolean);
-
-  for (const piece of pieces) {
-    const parsed = parseSingleImportedTimeRange(piece);
-    if (!parsed) {
-      invalid.push(piece);
-      continue;
-    }
-    ranges.push(`${minutesToTimeString(parsed.start)}-${minutesToTimeString(parsed.end)}`);
+const text = value.trim();
+if(!text || /^any$/i.test(text)) return { ranges: [] };
+const ranges: string[] = [];
+const invalid: string[] = [];
+// Split on commas or semicolons only; avoid splitting on "/" which can appear in time notations
+const pieces = text
+  .replace(/[–—]/g, "-")
+  .replace(/\bto\b/gi, "-")
+  .split(/[,;]+/)
+  .map(piece => piece.trim())
+  .filter(Boolean);
+for (const piece of pieces){
+  const parsed = parseSingleImportedTimeRange(piece);
+  if(!parsed){
+    invalid.push(piece);
+    continue;
   }
-
-  return invalid.length > 0
-    ? { ranges, error: `Invalid time range: ${invalid.join(", ")}.` }
-    : { ranges };
+  ranges.push(`${minutesToTimeString(parsed.start)}-${minutesToTimeString(parsed.end)}`);
+}
+return invalid.length > 0
+  ? { ranges, error: `Invalid time range: ${invalid.join(", ")}.` }
+  : { ranges };
 }
 
 function parseSingleImportedTimeRange(value: string): TimeWindow | null {
-  const match = value.match(/^(.+?)-(.+)$/);
+  const cleanValue = value.trim();
+  // Single time input means "from that time until close".
+  // Example: "3pm" → 3:00 PM–6:00 PM.
+  if (!cleanValue.includes("-")) {
+    const startClock = parseImportedClock(cleanValue);
+    if (!startClock) return null;
+    const start = importedClockToMinutes(startClock);
+    const end = CAL_END_MIN;
+    if (
+      start < CAL_START_MIN ||
+      start >= CAL_END_MIN ||
+      end <= start ||
+      !hasOneHourSlot(start, end)
+    ) {
+      return null;
+    }
+    return { start, end };
+  }
+  const match = cleanValue.match(/^(.+?)-(.+)$/);
   if (!match) return null;
-
   const startClock = parseImportedClock(match[1]);
-  const endClock   = parseImportedClock(match[2]);
+  const endClock = parseImportedClock(match[2]);
   if (!startClock || !endClock) return null;
-
   let startSuffix = startClock.suffix;
-  let endSuffix   = endClock.suffix;
-
-  // Infer missing suffix on the start side when only end has one
+  let endSuffix = endClock.suffix;
+  // Infer missing suffix on the start side when only end has one.
   if (!startSuffix && endSuffix) {
     if (endSuffix === "pm") {
       startSuffix =
-        startClock.hour === 12 ? "pm"
-        : startClock.hour > endClock.hour && startClock.hour >= 8 ? "am"
-        : "pm";
+        startClock.hour === 12
+          ? "pm"
+          : startClock.hour > endClock.hour && startClock.hour >= 8
+            ? "am"
+            : "pm";
     } else {
       startSuffix = "am";
     }
   }
-
-  // Infer missing suffix on the end side when only start has one
+  // Infer missing suffix on the end side when only start has one.
   if (startSuffix && !endSuffix) {
     if (startSuffix === "am" && endClock.hour < startClock.hour) {
-      // e.g. "9am-5" → end is clearly PM since 5 < 9
+      // Example: "9am-5" means 9:00 AM–5:00 PM.
       endSuffix = "pm";
-    } else if (startSuffix === "am" && endClock.hour >= 1 && endClock.hour <= 7) {
-      // Hours 1–7 with no suffix are always PM in this app's convention
+    } else if (
+      startSuffix === "am" &&
+      endClock.hour >= 1 &&
+      endClock.hour <= 7
+    ) {
+      // Hours 1–7 with no suffix are treated as PM in this app.
       endSuffix = "pm";
     } else {
       endSuffix = startSuffix;
     }
   }
-
   const start = importedClockToMinutes({ ...startClock, suffix: startSuffix });
-  let   end   = importedClockToMinutes({ ...endClock,   suffix: endSuffix   });
-
-  // Last-resort flip: if end still lands ≤ start and the end suffix was inferred
-  // (not explicitly written by the user), try flipping it to PM.
+  let end = importedClockToMinutes({ ...endClock, suffix: endSuffix });
+  // Last-resort flip: if end still lands ≤ start and the end suffix was inferred,
+  // try flipping it to PM.
   if (end <= start && !endClock.suffix) {
     const endAsPm = importedClockToMinutes({ ...endClock, suffix: "pm" });
     if (endAsPm > start) end = endAsPm;
   }
-
-  if (start < CAL_START_MIN || end > CAL_END_MIN || end <= start || !hasOneHourSlot(start, end)) return null;
+  if (
+    start < CAL_START_MIN ||
+    end > CAL_END_MIN ||
+    end <= start ||
+    !hasOneHourSlot(start, end)
+  ) {
+    return null;
+  }
   return { start, end };
 }
 
@@ -2818,16 +2687,15 @@ function parseImportedClock(value: string): { hour: number; minute: number; suff
   const suffix = suffixMatch ? (suffixMatch[1].startsWith("a") ? "am" : "pm") : undefined;
   const body = suffixMatch ? clean.slice(0, -suffixMatch[1].length) : clean;
   const match = body.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
-  if (!match) return null;
-
+  if(!match) return null;
   const hour = Number(match[1]);
   const minute = match[2] ? Number(match[2]) : 0;
-  if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
+  if(hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
   return { hour, minute, suffix };
 }
 
 function importedClockToMinutes(clock: { hour: number; minute: number; suffix?: "am" | "pm" }): number {
-  if (!clock.suffix) return timeToMinutes(`${clock.hour}:${String(clock.minute).padStart(2, "0")}`);
+  if(!clock.suffix) return timeToMinutes(`${clock.hour}:${String(clock.minute).padStart(2, "0")}`);
   const hour24 = clock.suffix === "pm" ? (clock.hour % 12) + 12 : clock.hour % 12;
   return hour24 * 60 + clock.minute;
 }
@@ -2858,8 +2726,7 @@ function formatClockForExport(minutes: number): string {
 // PURE HELPER FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Date utilities ────────────────────────────────────────────────────────────
-
+// Date utilities 
 function parseLocalDate(dateString: string): Date {
   const [year, month, day] = dateString.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -2877,22 +2744,22 @@ function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-/** Returns the Monday of the current week. If today is Sunday, returns next Monday. */
+// Returns the Monday of the current week. If today is Sunday/Saturday, returns next Monday.
 function getCurrentWeekStartDate(): string {
   const date = startOfLocalDay(new Date());
   const day  = date.getDay(); // 0=Sun, 1=Mon, …, 6=Sat
   let daysToMonday = day === 0 ? 1 : 1 - day;
-  if (day === 6) daysToMonday = 2;
+  if(day === 6) daysToMonday = 2;
   date.setDate(date.getDate() + daysToMonday);
   return toDateInputValue(date);
 }
 
-/** Returns today if it's a weekday, or the following Monday for weekends. */
+// Returns today if it's a weekday, or the following Monday for weekends.
 function getDefaultOpeningDate(): string {
   const date = startOfLocalDay(new Date());
   const day  = date.getDay();
-  if (day === 6) date.setDate(date.getDate() + 2); // Saturday → Monday
-  if (day === 0) date.setDate(date.getDate() + 1); // Sunday  → Monday
+  if(day === 6) date.setDate(date.getDate() + 2); // Saturday → Monday
+  if(day === 0) date.setDate(date.getDate() + 1); // Sunday  → Monday
   return toDateInputValue(date);
 }
 
@@ -2902,10 +2769,8 @@ function moveDateByDays(dateString: string, days: number): string {
   return toDateInputValue(date);
 }
 
-/**
- * Returns true only if the date is strictly more than RETENTION_DAYS old
- * (i.e. the cutoff day itself is NOT purged).
- */
+
+// Returns true only if the date is strictly more than RETENTION_DAYS old (i.e. the cutoff day itself is NOT purged).
 function isDateOlderThanRetentionDays(dateString: string, today: Date): boolean {
   const cutoff = startOfLocalDay(today);
   cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
@@ -2922,56 +2787,50 @@ function formatDisplayDate(dateString: string): string {
   });
 }
 
-//  Day code utilities ────────────────────────────────────────────────────────
+//  Day code utilities 
 
-/**
- * Returns the DayCode (M/Tu/W/Th/F) for a given YYYY-MM-DD date.
- * Returns null for Saturday and Sunday — callers should handle this.
-*/
-
+// Returns the DayCode (M/Tu/W/Th/F) for a given YYYY-MM-DD date.
 function getDayCodeFromDate(dateString: string): DayCode | null {
   const day = parseLocalDate(dateString).getDay();
-  if (day === 1) return "M";
-  if (day === 2) return "Tu";
-  if (day === 3) return "W";
-  if (day === 4) return "Th";
-  if (day === 5) return "F";
+  if(day === 1) return "M";
+  if(day === 2) return "Tu";
+  if(day === 3) return "W";
+  if(day === 4) return "Th";
+  if(day === 5) return "F";
   return null; // 0 = Sunday, 6 = Saturday
 }
 
-// Time conversion utilities ─────────────────────────────────────────────────
+// Time conversion utilities 
 //
 // Times are stored as "H:MM" strings in 12-hour format without AM/PM.
 // The calendar range is 8 AM – 6 PM (480–1080 minutes from midnight).
 // Hours 1–7 are treated as PM (1:00 → 13:00, …, 7:00 → 19:00).
 // Hours 8–12 are treated as AM/noon as-is.
 //
-
-/** Converts "H:MM" storage format to absolute minutes from midnight. */
 function timeToMinutes(time: string): number {
   const [hourStr, minuteStr] = time.split(":");
-  let hour        = Number(hourStr);
-  const minute    = Number(minuteStr ?? "0");
+  let hour = Number(hourStr);
+  const minute = Number(minuteStr ?? "0");
   // Ambiguous hours 1–7 are in the PM range (1 PM – 7 PM).
-  if (hour >= 1 && hour <= 7) hour += 12;
+  if(hour >= 1 && hour <= 7) hour += 12;
   return hour * 60 + minute;
 }
 
-/** Converts absolute minutes from midnight back to "H:MM" storage format. */
+// Converts absolute minutes from midnight back to "H:MM" storage format.
 function minutesToTimeString(totalMinutes: number): string {
-  const hour  = Math.floor(totalMinutes / 60);
-  const min   = totalMinutes % 60;
-  const disp  = hour > 12 ? hour - 12 : hour;
+  const hour = Math.floor(totalMinutes / 60);
+  const min = totalMinutes % 60;
+  const disp = hour > 12 ? hour - 12 : hour;
   return `${disp}:${String(min).padStart(2, "0")}`;
 }
 
-/** Formats "H:MM" storage value to "H:MM AM/PM" for display. */
+// Formats "H:MM" storage value to "H:MM AM/PM" for display.
 function formatDisplayTime(time: string): string {
   const totalMinutes = timeToMinutes(time);
   const hour24 = Math.floor(totalMinutes / 60);
-  const minute  = totalMinutes % 60;
-  const suffix  = hour24 >= 12 ? "PM" : "AM";
-  const hour12  = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  const minute = totalMinutes % 60;
+  const suffix = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
   return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
@@ -2983,7 +2842,7 @@ function snapToInterval(minutes: number, interval: number): number {
   return Math.round(minutes / interval) * interval;
 }
 
-// Calendar positioning helpers ──────────────────────────────────────────────
+// Calendar positioning helpers 
 
 function getOpeningTopPct(startTime: string): number {
   return ((timeToMinutes(startTime) - CAL_START_MIN) / CAL_SPAN) * 100;
@@ -2993,9 +2852,9 @@ function getOpeningHeightPct(startTime: string, endTime: string): number {
   return ((timeToMinutes(endTime) - timeToMinutes(startTime)) / CAL_SPAN) * 100;
 }
 
-// Time range / availability helpers ────────────────────────────────────────
+// Time range / availability helpers 
 
-/** Parses a serialized "H:MM-H:MM" range into {start, end} minutes. */
+// Parses a serialized "H:MM-H:MM" range into {start, end} minutes.
 function parseTimeRange(range: string): { start: number; end: number } {
   const [start, end] = range.split("-").map(part => part.trim());
   return { start: timeToMinutes(start), end: timeToMinutes(end) };
@@ -3007,30 +2866,22 @@ function hasOneHourSlot(start: number, end: number): boolean {
 
 function getOverlapWindow(aStart: number, aEnd: number, bStart: number, bEnd: number): TimeWindow | null {
   const start = Math.max(aStart, bStart);
-  const end   = Math.min(aEnd,   bEnd);
+  const end = Math.min(aEnd, bEnd);
   return hasOneHourSlot(start, end) ? { start, end } : null;
 }
 
-/**
- * Returns all minute-windows where the entry's availability overlaps the opening,
- * each at least 60 minutes long.
- *
- * Special case: Tier-1 entries with no day or time restrictions are treated as
- * fully flexible — they match any opening.
- */
+
+// Returns all minute-windows where the entry's availability overlaps the opening, each at least 60 minutes long. ----------------------------------------
 function getEligibleScheduleWindows(entry: WaitlistEntry, opening: Opening): TimeWindow[] {
   const isFlexibleUrgent = entry.tier === 1 && entry.availableDays.length === 0 && entry.availableTimes.length === 0;
   const dayMatches = isFlexibleUrgent || entry.availableDays.length === 0 || entry.availableDays.includes(opening.day);
-  if (!dayMatches) return [];
-
+  if(!dayMatches) return [];
   const openingStart = timeToMinutes(opening.startTime);
-  const openingEnd   = timeToMinutes(opening.endTime);
-
+  const openingEnd = timeToMinutes(opening.endTime);
   // No time restrictions — the whole opening is the window.
-  if (entry.availableTimes.length === 0) {
+  if(entry.availableTimes.length === 0){
     return hasOneHourSlot(openingStart, openingEnd) ? [{ start: openingStart, end: openingEnd }] : [];
   }
-
   return entry.availableTimes
     .map(parseTimeRange)
     .map(r => getOverlapWindow(r.start, r.end, openingStart, openingEnd))
@@ -3042,7 +2893,7 @@ function isEntryAvailableForOpening(entry: WaitlistEntry, opening: Opening): boo
 }
 
 function formatAvailableTimes(times: string[]): string {
-  if (times.length === 0) return "Any";
+  if(times.length === 0) return "Any";
   return times
     .map(range => {
       const { start, end } = parseTimeRange(range);
@@ -3055,26 +2906,25 @@ function formatAvailability(days: DayCode[], times: string[]): string {
   return `${days.length > 0 ? days.join(", ") : "Any"}; ${formatAvailableTimes(times)}`;
 }
 
-// Schedule selection helpers ────────────────────────────────────────────────
-
-/** Generates all valid start-time options (every SNAP minutes) across eligible windows. */
+// Schedule selection helpers 
+// Generates all valid start-time options (every SNAP minutes) across eligible windows. 
 function getScheduleStartOptions(windows: TimeWindow[]): string[] {
   return uniqueSortedTimes(windows.flatMap(w => {
     const options: string[] = [];
-    for (let min = w.start; min <= w.end - 60; min += SNAP) {
+    for (let min = w.start; min <= w.end - 60; min += SNAP){
       options.push(minutesToTimeString(min));
     }
     return options;
   }));
 }
 
-/** Generates all valid end-time options for a given start time. */
+// Generates all valid end-time options for a given start time.
 function getScheduleEndOptions(windows: TimeWindow[], startTime: string): string[] {
   const start = timeToMinutes(startTime);
   return uniqueSortedTimes(windows.flatMap(w => {
-    if (start < w.start || start + 60 > w.end) return [];
+    if(start < w.start || start + 60 > w.end) return [];
     const options: string[] = [];
-    for (let min = start + 60; min <= w.end; min += SNAP) {
+    for (let min = start + 60; min <= w.end; min += SNAP){
       options.push(minutesToTimeString(min));
     }
     return options;
@@ -3085,46 +2935,38 @@ function getDefaultScheduleSelection(windows: TimeWindow[]): ScheduleSelection {
   const first = windows[0] ?? { start: CAL_START_MIN, end: CAL_START_MIN + 60 };
   return {
     startTime: minutesToTimeString(first.start),
-    endTime:   minutesToTimeString(Math.min(first.start + 60, first.end)),
+    endTime: minutesToTimeString(Math.min(first.start + 60, first.end)),
   };
 }
 
-/**
- * Normalizes a selection so it stays within valid option sets after either field changes.
- * Falls back gracefully if the current values are no longer valid.
- */
+// Normalizes a selection so it stays within valid option sets after either field changes.
 function normalizeScheduleSelection(
   selection: ScheduleSelection,
   changedField: "startTime" | "endTime",
   windows: TimeWindow[],
 ): ScheduleSelection {
-  if (windows.length === 0) return getDefaultScheduleSelection(windows);
-
+  if(windows.length === 0) return getDefaultScheduleSelection(windows);
   const startOptions = getScheduleStartOptions(windows);
-  if (startOptions.length === 0) return getDefaultScheduleSelection(windows);
-
+  if(startOptions.length === 0) return getDefaultScheduleSelection(windows);
   let startTime = selection.startTime;
-  if (!startOptions.includes(startTime)) startTime = startOptions[0];
-
+  if(!startOptions.includes(startTime)) startTime = startOptions[0];
   let endOptions = getScheduleEndOptions(windows, startTime);
-  if (endOptions.length === 0) {
+  if(endOptions.length === 0){
     // Try the first valid start option instead
     startTime  = startOptions[0];
     endOptions = getScheduleEndOptions(windows, startTime);
     // If still empty (shouldn't happen with valid windows), fall back to default
-    if (endOptions.length === 0) return getDefaultScheduleSelection(windows);
+    if(endOptions.length === 0) return getDefaultScheduleSelection(windows);
   }
-
   let endTime = selection.endTime;
   const endTooEarly = timeToMinutes(endTime) - timeToMinutes(startTime) < 60;
-  if (!endOptions.includes(endTime) || (changedField === "startTime" && endTooEarly)) {
+  if(!endOptions.includes(endTime) || (changedField === "startTime" && endTooEarly)){
     endTime = endOptions[0];
   }
-
   return { startTime, endTime };
 }
 
-/** Returns the user's saved selection for an entry, validated against current windows. */
+// Returns the user's saved selection for an entry, validated against current windows. 
 function getResolvedScheduleSelection(
   entry: WaitlistEntry,
   opening: Opening,
@@ -3138,41 +2980,38 @@ function getResolvedScheduleSelection(
   );
 }
 
-// Time range draft helpers ──────────────────────────────────────────────────
-
+// Time range draft helpers 
 function getNextTimeRangeId(ranges: TimeRangeDraft[]): number {
   return ranges.length === 0 ? 1 : Math.max(...ranges.map(r => r.id)) + 1;
 }
 
-/** Parses a serialized "H:MM-H:MM" string into a TimeRangeDraft. */
+// Parses a serialized "H:MM-H:MM" string into a TimeRangeDraft.
 function rangeToDraft(range: string, fallbackId = 0): TimeRangeDraft {
   const parsed = parseTimeRange(range);
   return {
-    id:        fallbackId,
+    id: fallbackId,
     startTime: minutesToTimeString(parsed.start),
-    endTime:   minutesToTimeString(parsed.end),
+    endTime: minutesToTimeString(parsed.end),
   };
 }
 
-/** Ensures the draft's start/end are at least 60 minutes apart, clamped to calendar bounds. */
+// Ensures the draft's start/end are at least 60 minutes apart, clamped to calendar bounds.
 function normalizeDraftTimeRange(range: TimeRangeDraft, changedField: "startTime" | "endTime"): TimeRangeDraft {
   let start = timeToMinutes(range.startTime);
-  let end   = timeToMinutes(range.endTime);
-
-  if (end - start < 60) {
-    if (changedField === "startTime") {
-      end   = Math.min(CAL_END_MIN, start + 60);
-      if (end - start < 60) start = end - 60;
+  let end = timeToMinutes(range.endTime);
+  if(end - start < 60){
+    if(changedField === "startTime"){
+      end = Math.min(CAL_END_MIN, start + 60);
+      if(end - start < 60) start = end - 60;
     } else {
       start = Math.max(CAL_START_MIN, end - 60);
-      if (end - start < 60) end = start + 60;
+      if(end - start < 60) end = start + 60;
     }
   }
-
   return { ...range, startTime: minutesToTimeString(start), endTime: minutesToTimeString(end) };
 }
 
-/** Converts draft ranges back to serialized "H:MM-H:MM" strings, filtering invalid entries. */
+// Converts draft ranges back to serialized "H:MM-H:MM" strings, filtering invalid entries.
 function serializeTimeRangeDrafts(ranges: TimeRangeDraft[]): string[] {
   return ranges
     .map(r => normalizeDraftTimeRange(r, "endTime"))
@@ -3180,12 +3019,8 @@ function serializeTimeRangeDrafts(ranges: TimeRangeDraft[]): string[] {
     .map(r => `${r.startTime}-${r.endTime}`);
 }
 
-// Opening data helpers ──────────────────────────────────────────────────────
-
-/**
- * Removes the appointment slot from the opening, splitting it into up to two
- * pieces if the appointment is in the middle.
- */
+// Opening data helpers 
+// Removes the appointment slot from the opening, splitting it into up to two pieces if the appointment is in the middle.
 function splitOpeningForAppointment(
   openings: Opening[],
   openingId: number,
@@ -3193,96 +3028,75 @@ function splitOpeningForAppointment(
   appointmentEndTime: string,
 ): Opening[] {
   const apptStart = timeToMinutes(appointmentStartTime);
-  const apptEnd   = timeToMinutes(appointmentEndTime);
-
+  const apptEnd = timeToMinutes(appointmentEndTime);
   // Compute the next available ID from the full list before any modifications
   let nextId = getNextId(openings);
-
   const split = openings.flatMap(opening => {
-    if (opening.id !== openingId) return [opening];
-
+    if(opening.id !== openingId) return [opening];
     const oStart = timeToMinutes(opening.startTime);
-    const oEnd   = timeToMinutes(opening.endTime);
-
-    if (apptStart <= oStart && apptEnd >= oEnd) return []; // appointment covers entire opening
-    if (apptStart <= oStart) return [{ ...opening, startTime: minutesToTimeString(apptEnd) }];
-    if (apptEnd   >= oEnd)   return [{ ...opening, endTime:   minutesToTimeString(apptStart) }];
-
+    const oEnd = timeToMinutes(opening.endTime);
+    if(apptStart <= oStart && apptEnd >= oEnd) return []; // appointment covers entire opening
+    if(apptStart <= oStart) return [{ ...opening, startTime: minutesToTimeString(apptEnd) }];
+    if(apptEnd >= oEnd) return [{ ...opening, endTime: minutesToTimeString(apptStart) }];
     // Appointment is in the middle — split into two.
     return [
-      { ...opening, endTime:   minutesToTimeString(apptStart) },
+      { ...opening, endTime: minutesToTimeString(apptStart) },
       { ...opening, id: nextId++, startTime: minutesToTimeString(apptEnd) },
     ];
   });
-
   return mergeSameProviderOpenings(split);
 }
 
-/**
- * Merges adjacent or overlapping openings from the same provider on the same day.
- * `preferredId` ensures that after a drag or edit, the result block retains the
- * original opening's id (so selection state is preserved).
- */
+// Merges adjacent or overlapping openings from the same provider on the same day.
 function mergeSameProviderOpenings(openings: Opening[], preferredId?: number | null): Opening[] {
   const groups = new Map<string, Opening[]>();
-
-  for (const opening of openings) {
+  for (const opening of openings){
     const key = `${opening.provider}__${opening.date}`;
     groups.set(key, [...(groups.get(key) ?? []), opening]);
   }
-
   const merged: Opening[] = [];
-
-  for (const group of groups.values()) {
+  for (const group of groups.values()){
     const sorted = [...group].sort((a, b) => {
       const diff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
       return diff !== 0 ? diff : timeToMinutes(a.endTime) - timeToMinutes(b.endTime);
     });
-
-    let current:    Opening | null = null;
+    let current: Opening | null = null;
     let currentIds: Set<number>    = new Set();
-
-    for (const opening of sorted) {
-      if (current === null) {
-        current    = { ...opening };
+    for (const opening of sorted){
+      if(current === null){
+        current = { ...opening };
         currentIds = new Set([opening.id]);
         continue;
       }
-
-      const currentEnd   = timeToMinutes(current.endTime);
+      const currentEnd = timeToMinutes(current.endTime);
       const openingStart = timeToMinutes(opening.startTime);
-      const openingEnd   = timeToMinutes(opening.endTime);
-
-      if (openingStart <= currentEnd) {
+      const openingEnd = timeToMinutes(opening.endTime);
+      if(openingStart <= currentEnd){
         // Overlapping or adjacent — extend the current block.
         current.endTime = minutesToTimeString(Math.max(currentEnd, openingEnd));
         currentIds.add(opening.id);
         continue;
       }
-
-      if (preferredId != null && currentIds.has(preferredId)) current.id = preferredId;
+      if(preferredId != null && currentIds.has(preferredId)) current.id = preferredId;
       merged.push(current);
-      current    = { ...opening };
+      current = { ...opening };
       currentIds = new Set([opening.id]);
     }
-
-    if (current !== null) {
-      if (preferredId != null && currentIds.has(preferredId)) current.id = preferredId;
+    if(current !== null){
+      if(preferredId != null && currentIds.has(preferredId)) current.id = preferredId;
       merged.push(current);
     }
   }
-
   return merged.sort((a, b) => {
     const dateDiff = a.date.localeCompare(b.date);
-    if (dateDiff !== 0) return dateDiff;
+    if(dateDiff !== 0) return dateDiff;
     const startDiff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-    if (startDiff !== 0) return startDiff;
+    if(startDiff !== 0) return startDiff;
     return a.provider.localeCompare(b.provider);
   });
 }
 
-// Calendar segment rendering helpers ───────────────────────────────────────
-
+// Calendar segment rendering helpers 
 /**
  * Builds the list of OpeningSegments for one day column.
  *
@@ -3296,13 +3110,10 @@ function buildOpeningSegments(dayOpenings: Opening[]): OpeningSegment[] {
   const points = new Set<number>();
   dayOpenings.forEach(o => { points.add(timeToMinutes(o.startTime)); points.add(timeToMinutes(o.endTime)); });
   const breakpoints = [...points].sort((a, b) => a - b);
-
   const rawSegments: OpeningSegment[] = [];
-
-  for (let i = 0; i < breakpoints.length - 1; i++) {
+  for (let i = 0; i < breakpoints.length - 1; i++){
     const segStart = breakpoints[i];
-    const segEnd   = breakpoints[i + 1];
-
+    const segEnd = breakpoints[i + 1];
     // Which openings are active during this interval?
     const activeOpenings = dayOpenings
       .filter(o => timeToMinutes(o.startTime) < segEnd && timeToMinutes(o.endTime) > segStart)
@@ -3310,39 +3121,37 @@ function buildOpeningSegments(dayOpenings: Opening[]): OpeningSegment[] {
         const diff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
         return diff !== 0 ? diff : a.provider.localeCompare(b.provider);
       });
-
     activeOpenings.forEach((opening, index) => {
       const count = activeOpenings.length;
       rawSegments.push({
         opening,
-        startTime:    minutesToTimeString(segStart),
-        endTime:      minutesToTimeString(segEnd),
-        left:         `calc(${(index / count) * 100}% + 4px)`,
-        width:        `calc(${100 / count}% - 8px)`,
+        startTime: minutesToTimeString(segStart),
+        endTime: minutesToTimeString(segEnd),
+        left: `calc(${(index / count) * 100}% + 4px)`,
+        width: `calc(${100 / count}% - 8px)`,
         widthPercent: 100 / count,
         index,
-        showLabel:    false,
+        showLabel: false,
         isFirstPiece: false,
-        isLastPiece:  false,
+        isLastPiece: false,
       });
     });
   }
-
   return labelAndConnectOpeningSegments(mergeAdjacentOpeningSegments(rawSegments));
 }
 
-/** Merges consecutive segments for the same opening when they share column position. */
+// Merges consecutive segments for the same opening when they share column position.
 function mergeAdjacentOpeningSegments(segments: OpeningSegment[]): OpeningSegment[] {
   const merged: OpeningSegment[] = [];
-  for (const seg of segments) {
+  for (const seg of segments){
     const prev = merged[merged.length - 1];
-    if (
+    if(
       prev &&
       prev.opening.id === seg.opening.id &&
-      prev.endTime    === seg.startTime  &&
-      prev.left       === seg.left       &&
-      prev.width      === seg.width
-    ) {
+      prev.endTime === seg.startTime &&
+      prev.left === seg.left &&
+      prev.width === seg.width
+    ){
       prev.endTime = seg.endTime; // extend
     } else {
       merged.push({ ...seg });
@@ -3351,42 +3160,39 @@ function mergeAdjacentOpeningSegments(segments: OpeningSegment[]): OpeningSegmen
   return merged;
 }
 
-/** Marks each segment with showLabel, isFirstPiece, isLastPiece for rendering. */
+// Marks each segment with showLabel, isFirstPiece, isLastPiece for rendering.
 function labelAndConnectOpeningSegments(segments: OpeningSegment[]): OpeningSegment[] {
   return segments.map(segment => {
-    const same  = segments.filter(s => s.opening.id === segment.opening.id);
+    const same = segments.filter(s => s.opening.id === segment.opening.id);
     const first = same.reduce((b, c) => timeToMinutes(c.startTime) < timeToMinutes(b.startTime) ? c : b);
-    const last  = same.reduce((b, c) => timeToMinutes(c.endTime)   > timeToMinutes(b.endTime)   ? c : b);
+    const last = same.reduce((b, c) => timeToMinutes(c.endTime) > timeToMinutes(b.endTime) ? c : b);
     // Label goes on the widest (or longest) segment.
     const label = same.reduce((b, c) => {
-      if (c.widthPercent > b.widthPercent) return c;
-      if (c.widthPercent === b.widthPercent) {
+      if(c.widthPercent > b.widthPercent) return c;
+      if(c.widthPercent === b.widthPercent){
         const bDur = timeToMinutes(b.endTime) - timeToMinutes(b.startTime);
         const cDur = timeToMinutes(c.endTime) - timeToMinutes(c.startTime);
         return cDur > bDur ? c : b;
       }
       return b;
     });
-
     return {
       ...segment,
-      showLabel:    segment.startTime === label.startTime && segment.endTime === label.endTime && segment.left === label.left,
+      showLabel: segment.startTime === label.startTime && segment.endTime === label.endTime && segment.left === label.left,
       isFirstPiece: segment.startTime === first.startTime && segment.left === first.left && segment.width === first.width,
-      isLastPiece:  segment.endTime   === last.endTime    && segment.left === last.left  && segment.width === last.width,
+      isLastPiece: segment.endTime === last.endTime && segment.left === last.left && segment.width === last.width,
     };
   });
 }
 
-// Search helpers ────────────────────────────────────────────────────────────
-
+// Search helpers 
 function normalizeSearchQuery(value: string): string {
   return value.trim().toLowerCase();
 }
 
 function searchableTextContains(query: string, values: Array<string | number | undefined | null>): boolean {
   const normalized = normalizeSearchQuery(query);
-  if (!normalized) return true;
-
+  if(!normalized) return true;
   return values
     .filter(value => value !== undefined && value !== null)
     .map(String)
@@ -3452,12 +3258,11 @@ function removedRecordMatchesSearch(record: RemovedRecord, query: string): boole
   ]);
 }
 
-// General utilities ─────────────────────────────────────────────────────────
-
-/** Builds an array of "H:MM" time strings from startMin to endMin in stepMin increments. */
+// General utilities 
+// Builds an array of "H:MM" time strings from startMin to endMin in stepMin increments.
 function buildTimeOptions(startMin: number, endMin: number, stepMin: number): string[] {
   const options: string[] = [];
-  for (let min = startMin; min <= endMin; min += stepMin) {
+  for (let min = startMin; min <= endMin; min += stepMin){
     options.push(minutesToTimeString(min));
   }
   return options;
@@ -3467,22 +3272,22 @@ function uniqueSortedTimes(times: string[]): string[] {
   return [...new Set(times)].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }
 
-/** Returns a new array only if the filter actually removed items, avoiding spurious re-renders. */
+// Returns a new array only if the filter actually removed items, avoiding spurious re-renders.
 function filterWithoutStateChange<T>(items: T[], keep: (item: T) => boolean): T[] {
   const filtered = items.filter(keep);
   return filtered.length === items.length ? items : filtered;
 }
 
-/** Returns the next available integer ID, safe for any array size. */
+// Returns the next available integer ID, safe for any array size.
 function getNextId(items: { id: number }[]): number {
-  if (items.length === 0) return 1;
+  if(items.length === 0) return 1;
   return items.reduce((max, item) => item.id > max ? item.id : max, 0) + 1;
 }
 
 function formatPersonName(firstName: string, lastName: string): string {
   const first = firstName.trim();
   const last  = lastName.trim();
-  if (first && last) return `${last}, ${first}`;
+  if(first && last) return `${last}, ${first}`;
   return last || first || "—";
 }
 
@@ -3491,21 +3296,21 @@ function getFullName(entry: WaitlistEntry): string {
 }
 
 function getTierReason(tier: 1 | 2 | 3): string {
-  if (tier === 1) return "Urgent";
-  if (tier === 2) return "Semi-urgent";
+  if(tier === 1) return "Urgent";
+  if(tier === 2) return "Semi-urgent";
   return "Routine";
 }
 
 function compareScheduledRecordsByAppointment(a: ScheduledRecord, b: ScheduledRecord): number {
   const dateDiff = a.appointmentDate.localeCompare(b.appointmentDate);
-  if (dateDiff !== 0) return dateDiff;
+  if(dateDiff !== 0) return dateDiff;
   const startDiff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-  if (startDiff !== 0) return startDiff;
+  if(startDiff !== 0) return startDiff;
   return a.lastName.localeCompare(b.lastName);
 }
 
 function getSortIndicator(current: SortField, direction: "asc" | "desc", column: SortField): string {
-  if (current !== column) return "";
+  if(current !== column) return "";
   return direction === "asc" ? "↑" : "↓";
 }
 
