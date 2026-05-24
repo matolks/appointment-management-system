@@ -6,6 +6,9 @@ import fs from "node:fs";
 const APP_STATE_KEY = "main";
 const CURRENT_VERSION = 1;
 const MAX_AUTOMATIC_BACKUPS = 50;
+const AUTOMATIC_BACKUP_RETENTION_DAYS = 365;
+const AUTOMATIC_BACKUP_RETENTION_MS =
+  AUTOMATIC_BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 let db = null;
 
@@ -134,6 +137,7 @@ function createAutomaticBackupFromDatabase(database, backupType) {
 
 function pruneAutomaticBackups() {
   const backupDir = getBackupDirectory();
+  const cutoffTime = Date.now() - AUTOMATIC_BACKUP_RETENTION_MS;
 
   const backupFiles = fs
     .readdirSync(backupDir)
@@ -154,11 +158,23 @@ function pruneAutomaticBackups() {
     })
     .sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-  const filesToDelete = backupFiles.slice(MAX_AUTOMATIC_BACKUPS);
+  const filesToDelete = new Set();
 
-  for (const file of filesToDelete) {
+  // Delete automatic backups older than one year.
+  for (const file of backupFiles) {
+    if (file.mtimeMs < cutoffTime) {
+      filesToDelete.add(file.filePath);
+    }
+  }
+
+  // Also keep the existing safety cap of 50 automatic backups.
+  for (const file of backupFiles.slice(MAX_AUTOMATIC_BACKUPS)) {
+    filesToDelete.add(file.filePath);
+  }
+
+  for (const filePath of filesToDelete) {
     try {
-      fs.unlinkSync(file.filePath);
+      fs.unlinkSync(filePath);
     } catch {
       // If a backup cannot be deleted, leave it alone.
     }
@@ -227,7 +243,7 @@ function writeAppStateTransaction(database, state) {
 
 export function loadAppState() {
   const database = getDatabase();
-
+  pruneAutomaticBackups();
   const row = getCurrentAppStateRow(database);
 
   if (!row?.value) return null;

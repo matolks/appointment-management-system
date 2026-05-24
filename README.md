@@ -9,7 +9,8 @@ Providers are displayed on the left, and their openings are displayed on the cal
 ### Features
 
 - Clear/reset the database
-- Import and export data using Excel sheets
+- Import and export waitlist data using Excel sheets
+- Export, import, and restore local database backups
 - Add new openings
 - Edit or remove current openings
 - Add, edit, or remove providers
@@ -44,9 +45,17 @@ Excel imports support flexible column order when a header row is included. If no
 | Available Days  |       No | `Dates`, `Available Days`, `Days`                  | `M`, `Mon`, `Monday`, `Tu`, `Tue`, `Tuesday`, `W`, `Wed`, `Wednesday`, `Th`, `Thu`, `Thursday`, `F`, `Fri`, `Friday`, `Any`, blank | Multiple values can be separated by spaces, commas, semicolons, or slashes. Blank or `Any` means any day. Weekends are not supported.                                                  |
 | Available Times |       No | `Times`, `Available Times`, `Availability`, `Time` | `8am-12pm`, `8:00am-12:00pm`, `8-12pm`, `1pm-3pm`, `8am to 12pm`, `8am-12pm, 1pm-3pm`, `Any`, blank                                | Multiple time ranges can be separated by commas or semicolons. Blank or `Any` means any time. Times must be within 8:00 AM–6:00 PM and each range must contain at least one full hour. |
 
-## Database
+## Database and Backups
 
 Appointment Manager stores data locally using SQLite. The app saves providers, openings, waitlist entries, scheduled records, and removed records so the data persists after the desktop app is closed.
+
+The app also includes backup tools for protecting local data. Users can export a backup, import a previous backup, restore the latest backup, and open the backup folder from inside the app.
+
+Backups are separate from Excel imports and exports. Excel files are used for waitlist data transfer, while backups are used to preserve and restore the full local application database.
+
+## Data Privacy
+
+Appointment Manager stores data locally on the user's machine. Patient data, database files, Excel exports, and backup files should not be committed to GitHub.
 
 ## Tech Stack
 
@@ -62,3 +71,9 @@ Appointment Manager stores data locally using SQLite. The app saves providers, o
 - Send automated text messages when scheduling a patient
 - Support military time if needed
 - Improve scheduling notifications and reminders
+
+## License
+
+All rights reserved.
+
+This code may not be used, copied, modified, distributed, or reused without prior written permission from Vince Matolka.

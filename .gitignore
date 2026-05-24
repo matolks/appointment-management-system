@@ -8,9 +8,14 @@ release/
 out/
 build/
 
+# Vite / tooling cache
+.vite/
+.cache/
+
 # Environment / secrets
 .env
 .env.*
+!.env.example
 *.local
 
 # Logs
@@ -49,6 +54,11 @@ Thumbs.db
 *.sqlite-wal
 *.db-shm
 *.sqlite-shm
+
+# Local backups
+backups/
+*.bak
+*.backup
 
 # Local app data folders if accidentally created in the project
 data/
