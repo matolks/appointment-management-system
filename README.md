@@ -58,7 +58,7 @@ The app includes backup tools for protecting local data. Users can export a full
 
 Backups are separate from Excel imports and exports. Excel files are used for waitlist data transfer, while backups are used to preserve and restore the full local application state.
 
-Automatic backups are kept for up to one year. Older automatic backups are deleted to reduce long-term storage of outdated patient records.
+Automatic backups are kept for up to one year. Older automatic backups are deleted to reduce long term storage of outdated patient records.
 
 ## Performance Benchmark
 
@@ -73,9 +73,9 @@ The SQLite persistence layer was benchmarked with generated appointment and wait
 |   5,000 |      1.66 MB | 2.625 ms |  7.922 ms |
 |  10,000 |      3.33 MB | 5.520 ms | 15.674 ms |
 
-Raw SQLite primary-key lookup measured 0.010 ms p95 across 1,000 reads. A real changed save with backup creation enabled measured 1.884 ms p95 on the current application dataset.
+Raw SQLite primary key lookup measured 0.010 ms p95 across 1,000 reads. A real changed save with backup creation enabled measured 1.884 ms p95 on the current application dataset.
 
-These results show that SQLite lookup time is effectively negligible for the current storage model. The dominant persistence cost is JSON serialization and writing the app-state payload, but a 10,000 record generated dataset still remained below 6 ms p95 for reads and below 16 ms p95 for writes.
+These results show that SQLite lookup time is effectively negligible for the current storage model. The dominant persistence cost is JSON serialization and writing the application state payload, but a 10,000 record generated dataset still remained below 6 ms p95 for reads and below 16 ms p95 for writes.
 
 ## Data Privacy
 
