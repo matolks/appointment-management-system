@@ -6,7 +6,9 @@
 "scripts": {
   "dev": "vite",
   "electron": "wait-on http://localhost:5173 && electron electron/main.js",
+  "electron:benchmark": "wait-on http://localhost:5173 && BENCHMARK_DB=1 electron electron/main.js",
   "desktop": "concurrently \"npm run dev\" \"npm run electron\"",
+  "desktop:benchmark": "concurrently \"npm run dev\" \"npm run electron:benchmark\"",
   "build": "tsc -b && vite build",
   "lint": "eslint .",
   "preview": "vite preview"

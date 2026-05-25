@@ -60,6 +60,23 @@ Backups are separate from Excel imports and exports. Excel files are used for wa
 
 Automatic backups are kept for up to one year. Older automatic backups are deleted to reduce long-term storage of outdated patient records.
 
+## Performance Benchmark
+
+The SQLite persistence layer was benchmarked with generated appointment and waitlist records to validate local storage performance.
+
+| Records | Payload Size | Read p95 | Write p95 |
+| ------: | -----------: | -------: | --------: |
+|     100 |      33.1 KB | 0.157 ms |  0.904 ms |
+|     500 |     164.9 KB | 0.337 ms |  2.051 ms |
+|   1,000 |     329.6 KB | 0.555 ms |  3.506 ms |
+|   2,500 |     828.7 KB | 1.297 ms | 14.644 ms |
+|   5,000 |      1.66 MB | 2.625 ms |  7.922 ms |
+|  10,000 |      3.33 MB | 5.520 ms | 15.674 ms |
+
+Raw SQLite primary-key lookup measured 0.010 ms p95 across 1,000 reads. A real changed save with backup creation enabled measured 1.884 ms p95 on the current application dataset.
+
+These results show that SQLite lookup time is effectively negligible for the current storage model. The dominant persistence cost is JSON serialization and writing the app-state payload, but a 10,000 record generated dataset still remained below 6 ms p95 for reads and below 16 ms p95 for writes.
+
 ## Data Privacy
 
 Appointment Manager stores data locally on the user's machine. Patient data, SQLite database files, Excel exports, JSON backups, and backup folders should not be committed to GitHub.
@@ -75,6 +92,12 @@ Backups may contain patient records that were later edited, removed, or purged f
 - SheetJS
 - CSS
 
+## Screenshots
+
+![Calender Example](examples/calendar-example.png)
+
+![Waitlist Example](examples/waitlist-example.png)
+
 ## Future Improvements
 
 - Send automated text messages when scheduling a patient
@@ -86,7 +109,3 @@ Backups may contain patient records that were later edited, removed, or purged f
 All rights reserved.
 
 This code may not be used, copied, modified, distributed, or reused without prior written permission from Vince Matolka.
-
-![Calender Example](examples/calendar-example.png)
-
-![Waitlist Example](examples/waitlist-example.png)
