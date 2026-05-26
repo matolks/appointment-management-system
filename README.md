@@ -103,6 +103,7 @@ Backups may contain patient records that were later edited, removed, or purged f
 - Send automated text messages when scheduling a patient
 - Support military time if needed
 - Improve scheduling notifications and reminders
+- Better recovery method (only toggels w/ last backup)
 
 ## License
 
