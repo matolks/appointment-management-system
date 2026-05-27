@@ -11,7 +11,7 @@
 // How to maintain if necessary - for now maybe not needed.
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import * as XLSX from "xlsx";
+import ExcelJS, { type CellValue } from "exceljs";
 import "./App.css";
 
 import type {
@@ -550,36 +550,53 @@ function App(){
     clearImportPreview();
   }
 
-  function handleImportFile(file: File | null){
-    if(!file) return;
-    // FIX: guard against unsupported file types early
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if(!["xlsx", "xls", "csv"].includes(ext)){
-      setImportError("Unsupported file type. Please use .xlsx, .xls, or .csv.");
-      return;
-    }
-    setImportError("");
-    setImportFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = event => {
-      try {
-        const data = event.target?.result;
-        if(!data) throw new Error("Unable to read the selected file.");
-        const workbook = XLSX.read(data, { type: "array", cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        if(!firstSheetName) throw new Error("The workbook does not contain a sheet.");
-        const parsedRows = parseImportedWaitlistSheet(workbook.Sheets[firstSheetName]);
-        const annotatedRows = annotateImportedProviders(parsedRows, providers);
-        setImportPreviewRows(annotatedRows);
-        if(annotatedRows.length === 0) setImportError("No waitlist rows were found in the first sheet.");
-      } catch (error){
-        setImportPreviewRows([]);
-        setImportError(error instanceof Error ? error.message : "The file could not be imported.");
+function handleImportFile(file: File | null){
+  if(!file) return;
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if(!["xlsx", "csv"].includes(ext)){
+    setImportError("Unsupported file type. Please use .xlsx or .csv.");
+    return;
+  }
+  setImportError("");
+  setImportFileName(file.name);
+  const reader = new FileReader();
+  reader.onload = async event => {
+    try {
+      const data = event.target?.result;
+      if(!data) throw new Error("Unable to read the selected file.");
+      let indexedRows: ImportedSheetRow[] = [];
+      if(ext === "csv"){
+        const text = typeof data === "string"
+          ? data
+          : new TextDecoder().decode(data as ArrayBuffer);
+        indexedRows = parseCsvRows(text);
+      } else {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(data as ArrayBuffer);
+
+        const worksheet = workbook.worksheets[0];
+        if(!worksheet) throw new Error("The workbook does not contain a sheet.");
+
+        indexedRows = excelWorksheetToIndexedRows(worksheet);
       }
-    };
-    reader.onerror = () => setImportError("The file could not be read.");
+      const parsedRows = parseImportedWaitlistRows(indexedRows);
+      const annotatedRows = annotateImportedProviders(parsedRows, providers);
+      setImportPreviewRows(annotatedRows);
+      if(annotatedRows.length === 0){
+        setImportError("No waitlist rows were found in the first sheet.");
+      }
+    } catch (error){
+      setImportPreviewRows([]);
+      setImportError(error instanceof Error ? error.message : "The file could not be imported.");
+    }
+  };
+  reader.onerror = () => setImportError("The file could not be read.");
+  if(ext === "csv"){
+    reader.readAsText(file);
+  } else {
     reader.readAsArrayBuffer(file);
   }
+}
 
   function confirmImportRows(){
     const rowsToImport = importPreviewRows.filter(row => row.status !== "ERROR");
@@ -619,25 +636,44 @@ function App(){
     closeImportExportModal();
   }
 
-  function exportWaitlistToExcel(){
-    const rows = entries
-      .filter(entry => entry.status === "WAITLISTED")
-      .map(entry => ({
-        "Date added": formatDateForExport(entry.dateAdded),
-        Name: formatPersonName(entry.firstName, entry.lastName),
-        Provider: entry.provider,
-        Tier: entry.tier,
-        Reason: entry.reason,
-        Dates: entry.availableDays.join(","),
-        Times: formatAvailableTimesForExport(entry.availableTimes),
-      }));
-    const worksheet = XLSX.utils.json_to_sheet(rows, {
-      header: ["Date added", "Name", "Provider", "Tier", "Reason", "Dates", "Times"],
-    });
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Waitlist");
-    XLSX.writeFile(workbook, `waitlist-export-${getTodayDateInputValue()}.xlsx`);
-  }
+async function exportWaitlistToExcel(){
+  const rows = entries
+    .filter(entry => entry.status === "WAITLISTED")
+    .map(entry => ({
+      "Date added": formatDateForExport(entry.dateAdded),
+      Name: formatPersonName(entry.firstName, entry.lastName),
+      Provider: entry.provider,
+      Tier: entry.tier,
+      Reason: entry.reason,
+      Dates: entry.availableDays.join(","),
+      Times: formatAvailableTimesForExport(entry.availableTimes),
+    }));
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Waitlist");
+  worksheet.columns = [
+    { header: "Date added", key: "Date added", width: 14 },
+    { header: "Name", key: "Name", width: 24 },
+    { header: "Provider", key: "Provider", width: 20 },
+    { header: "Tier", key: "Tier", width: 10 },
+    { header: "Reason", key: "Reason", width: 20 },
+    { header: "Dates", key: "Dates", width: 18 },
+    { header: "Times", key: "Times", width: 24 },
+  ];
+  worksheet.addRows(rows);
+  worksheet.getRow(1).font = { bold: true };
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer as BlobPart], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `waitlist-export-${getTodayDateInputValue()}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
   // ─────────────────────────────────────────────────────────────────────────
   // MUTATIONS — SCHEDULING
@@ -2204,7 +2240,7 @@ function App(){
             <input
               ref={importFileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.csv"
               style={{ display: "none" }}
               onChange={e => handleImportFile(e.target.files?.[0] ?? null)}
             />
@@ -2220,7 +2256,7 @@ function App(){
                 }}
               >
                 <div className="import-dropzone-title">Drag and drop an Excel file</div>
-                <div className="import-dropzone-subtitle">Accepted: .xlsx, .xls, .csv</div>
+                <div className="import-dropzone-subtitle">Accepted: .xlsx, .csv</div>
                 <button className="btn-secondary" onClick={() => importFileInputRef.current?.click()}>
                   Select File
                 </button>
@@ -2675,15 +2711,13 @@ function App(){
 // IMPORT / EXPORT HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function parseImportedWaitlistSheet(sheet: XLSX.WorkSheet): ImportPreviewRow[]{
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    raw: true,
-    defval: "",
-  }) as unknown[][];
-  const indexedRows = rows
-    .map((cells, index) => ({ cells, rowNumber: index + 1 }))
-    .filter(row => !isImportedSheetRowEmpty(row.cells));
+type ImportedSheetRow = {
+  cells: unknown[];
+  rowNumber: number;
+};
+
+function parseImportedWaitlistRows(rows: ImportedSheetRow[]): ImportPreviewRow[]{
+  const indexedRows = rows.filter(row => !isImportedSheetRowEmpty(row.cells));
   if(indexedRows.length === 0) return [];
   const firstRowIsHeader = looksLikeImportHeaderRow(indexedRows[0].cells);
   if(!firstRowIsHeader){
@@ -2696,6 +2730,77 @@ function parseImportedWaitlistSheet(sheet: XLSX.WorkSheet): ImportPreviewRow[]{
   return dataRows
     .filter(row => !isImportedSheetRowEmpty(row.cells))
     .map((row, index) => parseImportedWaitlistRowFromHeaderMap(row.cells, headerMap, row.rowNumber, index + 1));
+}
+
+function excelWorksheetToIndexedRows(worksheet: ExcelJS.Worksheet): ImportedSheetRow[]{
+  const rows: ImportedSheetRow[] = [];
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    const values = row.values as CellValue[];
+    const cells = values.slice(1).map(value => excelCellValueToPrimitive(value));
+    rows.push({ cells, rowNumber });
+  });
+  return rows;
+}
+
+function excelCellValueToPrimitive(value: CellValue): unknown {
+  if(value === null || value === undefined) return "";
+  if(value instanceof Date) return value;
+  if(typeof value !== "object") return value;
+  if("result" in value){
+    return excelCellValueToPrimitive(value.result as CellValue);
+  }
+  if("text" in value && typeof value.text === "string"){
+    return value.text;
+  }
+  if("richText" in value && Array.isArray(value.richText)){
+    return value.richText.map(part => part.text ?? "").join("");
+  }
+  return String(value);
+}
+
+function parseCsvRows(text: string): ImportedSheetRow[]{
+  const rows: ImportedSheetRow[] = [];
+  let currentCell = "";
+  let currentRow: string[] = [];
+  let rowNumber = 1;
+  let insideQuotes = false;
+  function finishCell(){
+    currentRow.push(currentCell);
+    currentCell = "";
+  }
+  function finishRow(){
+    finishCell();
+    rows.push({ cells: currentRow, rowNumber });
+    currentRow = [];
+    rowNumber += 1;
+  }
+  for(let i = 0; i < text.length; i++){
+    const char = text[i];
+    const next = text[i + 1];
+    if(char === "\""){
+      if(insideQuotes && next === "\""){
+        currentCell += "\"";
+        i += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+    if(char === "," && !insideQuotes){
+      finishCell();
+      continue;
+    }
+    if((char === "\n" || char === "\r") && !insideQuotes){
+      if(char === "\r" && next === "\n") i += 1;
+      finishRow();
+      continue;
+    }
+    currentCell += char;
+  }
+  if(currentCell.length > 0 || currentRow.length > 0){
+    finishRow();
+  }
+  return rows.filter(row => !isImportedSheetRowEmpty(row.cells));
 }
 
 function annotateImportedProviders(rows: ImportPreviewRow[], providers: Provider[]): ImportPreviewRow[]{
@@ -2839,11 +2944,8 @@ function cellToImportText(value: unknown): string {
 function parseImportedDate(value: unknown): string | null {
   if(value instanceof Date && !Number.isNaN(value.getTime())) return toDateInputValue(value);
   if(typeof value === "number" && Number.isFinite(value)){
-    const parsed = XLSX.SSF.parse_date_code(value);
-    if(parsed){
-      const date = new Date(parsed.y, parsed.m - 1, parsed.d);
-      return toDateInputValue(date);
-    }
+    const date = excelSerialDateToDate(value);
+    if(date) return toDateInputValue(date);
   }
   const text = cellToImportText(value).trim();
   const match = text.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2}|\d{4}))?$/);
@@ -2855,6 +2957,14 @@ function parseImportedDate(value: unknown): string | null {
   const date = new Date(year, month - 1, day);
   if(date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
   return toDateInputValue(date);
+}
+
+function excelSerialDateToDate(serial: number): Date | null {
+  if(serial <= 0) return null;
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+  const date = new Date(excelEpoch.getTime() + serial * 24 * 60 * 60 * 1000);
+  if(Number.isNaN(date.getTime())) return null;
+  return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
 function parseImportedName(value: string): { firstName: string; lastName: string } | null {

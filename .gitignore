@@ -30,6 +30,8 @@ lerna-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
 # Editor files
 .vscode/*
@@ -40,6 +42,14 @@ Thumbs.db
 *.njsproj*
 *.sln
 *.sw?
+
+# Electron builder output
+*.dmg
+*.exe
+*.AppImage
+*.blockmap
+*.zip
+*.tar.gz
 
 # Electron generated files
 *.asar
@@ -68,6 +78,8 @@ backups/
 *.pem
 *.p12
 *.pfx
+appointment-manager-key.bin
+*-key.bin
 
 # Local app data folders if accidentally created in the project
 data/
@@ -78,3 +90,9 @@ userData/
 *.xlsx
 *.xls
 *.csv
+
+# Backups / exports
+backups/
+*backup*.json
+appointment-manager-*.json
+corrupt-app-state-*.txt
