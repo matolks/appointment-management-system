@@ -104,7 +104,7 @@ ipcMain.handle("app-state:export-backup", async (event) => {
   const result = await dialog.showSaveDialog(mainWindow, {
     title: "Export Full Backup",
     defaultPath: getBackupDefaultFileName(),
-    filters: [{ name: "JSON Backup", extensions: ["json"] }],
+    filters: [{ name: "Encrypted JSON Backup", extensions: ["json"] }],
   });
   if (result.canceled || !result.filePath) {
     return { canceled: true };
