@@ -37,14 +37,15 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "png-to-ico": "^3.0.1",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
     "wait-on": "^9.0.10"
   },
   "build": {
-    "appId": "com.vincematolka.appointmentmanager",
-    "productName": "Appointment Manager",
+    "appId": "com.vincematolka.appointmentmanagementsystem",
+    "productName": "Appointment Management System",
     "directories": {
       "output": "release"
     },
@@ -56,16 +57,21 @@
     "mac": {
       "target": [
         "dmg"
-      ]
+      ],
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Appointment Management System"
     }
   }
 }

@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Vince Matolka.
  * All rights reserved.
  *
- * This file is part of Appointment Manager.
+ * This file is part of Appointment Management System.
  * Unauthorized copying, modification, distribution, or use is prohibited
  * without written permission from the copyright owner.
  */

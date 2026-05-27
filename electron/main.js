@@ -2,7 +2,7 @@
  * Copyright (c) 2026 Vince Matolka.
  * All rights reserved.
  *
- * This file is part of Appointment Manager.
+ * This file is part of Appointment Management System.
  * Unauthorized copying, modification, distribution, or use is prohibited
  * without written permission from the copyright owner.
  */
@@ -60,6 +60,7 @@ async function createWindow() {
     width: 1200,
     height: 800,
     show: false,
+    icon: path.join(__dirname, "../build/icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
