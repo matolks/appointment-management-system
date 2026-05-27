@@ -28,7 +28,6 @@ const DEV_SERVER_URL =
   process.env.VITE_DEV_SERVER_URL ?? "http://localhost:5173";
 const RENDERER_DIST = path.join(__dirname, "../dist");
 let mainWindow = null;
-
 function isAllowedRendererUrl(rawUrl) {
   try {
     const url = new URL(rawUrl);
@@ -87,25 +86,30 @@ ipcMain.handle("app-state:load", (event) => {
   assertTrustedSender(event);
   return loadAppState();
 });
+
 // Save current application state.
 // The database layer should create an automatic backup before committing.
 ipcMain.handle("app-state:save", (event, state) => {
   assertTrustedSender(event);
   return saveAppState(state);
 });
+
 // Reset all persisted application state.
 ipcMain.handle("app-state:reset", (event) => {
   assertTrustedSender(event);
   return resetAppState();
 });
+
 // Export a full JSON backup selected by the user.
 ipcMain.handle("app-state:export-backup", async (event) => {
   assertTrustedSender(event);
+
   const result = await dialog.showSaveDialog(mainWindow, {
     title: "Export Full Backup",
     defaultPath: getBackupDefaultFileName(),
     filters: [{ name: "Encrypted JSON Backup", extensions: ["json"] }],
   });
+
   if (result.canceled || !result.filePath) {
     return { canceled: true };
   }
@@ -116,8 +120,8 @@ ipcMain.handle("app-state:export-backup", async (event) => {
   };
 });
 
-// Import a full JSON backup selected by the user.
-// The database layer should validate, persist, and return the restored state.
+// Import a full JSON backup selected by the user
+// The database layer should validate, persist, and return the restored state
 ipcMain.handle("app-state:import-backup", async (event) => {
   assertTrustedSender(event);
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -131,12 +135,14 @@ ipcMain.handle("app-state:import-backup", async (event) => {
   const restoredState = await importFullBackup(result.filePaths[0]);
   return restoredState;
 });
-// Restore the latest automatic backup.
+
+// Restore the latest automatic backup
 ipcMain.handle("app-state:restore-latest-backup", async (event) => {
   assertTrustedSender(event);
   return restoreLatestBackup();
 });
-// Open the automatic backup folder in Finder/File Explorer.
+
+// Open the automatic backup folder in Finder/File Explorer
 ipcMain.handle("app-state:open-backup-folder", async (event) => {
   assertTrustedSender(event);
   const backupDirectory = getBackupDirectory();
@@ -147,11 +153,11 @@ ipcMain.handle("app-state:open-backup-folder", async (event) => {
   };
 });
 
+// Clear automatic backups that exceed retention rules
 ipcMain.handle("app-state:clear-old-backups", async (event) => {
   assertTrustedSender(event);
   return clearOldBackups();
 });
-
 app.whenReady().then(createWindow);
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {

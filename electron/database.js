@@ -14,7 +14,11 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 
 const APP_STATE_KEY = "main";
-const CURRENT_VERSION = 1;
+
+const CURRENT_APP_STATE_SCHEMA_VERSION = 1;
+const CURRENT_BACKUP_FORMAT_VERSION = 1;
+const CURRENT_DB_SCHEMA_VERSION = 1;
+
 const MAX_AUTOMATIC_BACKUPS = 50;
 const AUTOMATIC_BACKUP_RETENTION_DAYS = 365;
 const AUTOMATIC_BACKUP_RETENTION_MS =
@@ -45,6 +49,7 @@ export function getBackupDirectory() {
   const backupDir = path.join(app.getPath("userData"), "backups");
   fs.mkdirSync(backupDir, { recursive: true });
   lockDownDirectory(backupDir);
+
   return backupDir;
 }
 
@@ -72,7 +77,7 @@ function getTimestampForFileName() {
 
 function getEmptyAppState() {
   return {
-    version: CURRENT_VERSION,
+    schemaVersion: CURRENT_APP_STATE_SCHEMA_VERSION,
     providers: [],
     entries: [],
     openings: [],
@@ -114,16 +119,19 @@ function encryptText(plainText) {
     cipher.final(),
   ]);
   const authTag = cipher.getAuthTag();
-  return JSON.stringify({
+  return {
     format: ENCRYPTION_FORMAT,
     iv: iv.toString("base64"),
     authTag: authTag.toString("base64"),
     data: encrypted.toString("base64"),
-  });
+  };
 }
 
-function decryptText(encryptedText) {
-  const parsed = JSON.parse(encryptedText);
+function decryptText(encryptedValue) {
+  const parsed =
+    typeof encryptedValue === "string"
+      ? JSON.parse(encryptedValue)
+      : encryptedValue;
   if (parsed?.format !== ENCRYPTION_FORMAT) {
     return null;
   }
@@ -140,7 +148,7 @@ function decryptText(encryptedText) {
 
 function isEncryptedEnvelope(value) {
   try {
-    const parsed = JSON.parse(value);
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
     return parsed?.format === ENCRYPTION_FORMAT;
   } catch {
     return false;
@@ -148,17 +156,63 @@ function isEncryptedEnvelope(value) {
 }
 
 function serializeStoredState(state) {
-  return encryptText(JSON.stringify(state));
+  return JSON.stringify(encryptText(JSON.stringify(state)));
 }
 
 function parseStoredState(value) {
   if (!value) return null;
-  // New encrypted format.
+  // Current encrypted SQLite format.
   if (isEncryptedEnvelope(value)) {
     return JSON.parse(decryptText(value));
   }
-  // Backward compatibility for your current plaintext SQLite data.
+  // Backward compatibility for existing plaintext SQLite data.
   return JSON.parse(value);
+}
+
+function normalizeAppState(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const schemaVersion = Number.isInteger(value.schemaVersion)
+    ? value.schemaVersion
+    : Number.isInteger(value.version)
+      ? value.version
+      : 0;
+  if (schemaVersion > CURRENT_APP_STATE_SCHEMA_VERSION) {
+    throw new Error(`Unsupported app state schema version: ${schemaVersion}`);
+  }
+
+  return {
+    schemaVersion: CURRENT_APP_STATE_SCHEMA_VERSION,
+    providers: Array.isArray(value.providers) ? value.providers : [],
+    entries: Array.isArray(value.entries) ? value.entries : [],
+    openings: Array.isArray(value.openings)
+      ? value.openings.map((opening) => ({
+          ...opening,
+          isSurgery: Boolean(opening.isSurgery),
+        }))
+      : [],
+    scheduledRecords: Array.isArray(value.scheduledRecords)
+      ? value.scheduledRecords
+      : [],
+    removedRecords: Array.isArray(value.removedRecords)
+      ? value.removedRecords
+      : [],
+  };
+}
+
+function getDatabaseSchemaVersion(database) {
+  const row = database.prepare("PRAGMA user_version").get();
+  return row.user_version;
+}
+
+function migrateDatabaseSchema(database) {
+  const version = getDatabaseSchemaVersion(database);
+  if (version === 0) {
+    database.exec(`PRAGMA user_version = ${CURRENT_DB_SCHEMA_VERSION};`);
+    return;
+  }
+  if (version > CURRENT_DB_SCHEMA_VERSION) {
+    throw new Error(`Unsupported database schema version: ${version}`);
+  }
 }
 
 export function getDatabase() {
@@ -175,30 +229,9 @@ export function getDatabase() {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) STRICT;
   `);
-
+  migrateDatabaseSchema(db);
   lockDownFile(getDbPath());
   return db;
-}
-
-function normalizeAppState(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return {
-    version: CURRENT_VERSION,
-    providers: Array.isArray(value.providers) ? value.providers : [],
-    entries: Array.isArray(value.entries) ? value.entries : [],
-    openings: Array.isArray(value.openings)
-      ? value.openings.map((opening) => ({
-          ...opening,
-          isSurgery: Boolean(opening.isSurgery),
-        }))
-      : [],
-    scheduledRecords: Array.isArray(value.scheduledRecords)
-      ? value.scheduledRecords
-      : [],
-    removedRecords: Array.isArray(value.removedRecords)
-      ? value.removedRecords
-      : [],
-  };
 }
 
 function getCurrentAppStateRow(database) {
@@ -221,19 +254,32 @@ function writeJsonFileAtomic(filePath, value) {
 }
 
 function createBackupPayload(state, backupType) {
+  const normalized = normalizeAppState(state);
+  if (!normalized) {
+    throw new Error("Cannot create backup from invalid app state.");
+  }
   return {
     backupType,
     appName: "Appointment Manager",
-    appStateVersion: CURRENT_VERSION,
+    backupFormatVersion: CURRENT_BACKUP_FORMAT_VERSION,
+    appStateSchemaVersion: CURRENT_APP_STATE_SCHEMA_VERSION,
     createdAt: new Date().toISOString(),
     encrypted: true,
-    payload: encryptText(JSON.stringify(state)),
+    payload: encryptText(JSON.stringify(normalized)),
   };
 }
 
 function readBackupPayload(parsed) {
-  // New encrypted backup format.
+  // Current encrypted backup format.
   if (parsed?.encrypted === true && parsed?.payload) {
+    if (
+      Number.isInteger(parsed.backupFormatVersion) &&
+      parsed.backupFormatVersion > CURRENT_BACKUP_FORMAT_VERSION
+    ) {
+      throw new Error(
+        `Unsupported backup format version: ${parsed.backupFormatVersion}`,
+      );
+    }
     const decrypted = decryptText(parsed.payload);
     const normalized = normalizeAppState(JSON.parse(decrypted));
     if (!normalized) {
@@ -291,7 +337,6 @@ function pruneAutomaticBackups() {
     .map((fileName) => {
       const filePath = path.join(backupDir, fileName);
       const stat = fs.statSync(filePath);
-
       return {
         fileName,
         filePath,
@@ -326,6 +371,7 @@ export function clearOldBackups() {
         fileName.startsWith("appointment-manager-") &&
         fileName.endsWith(".json"),
     );
+
   pruneAutomaticBackups();
   const afterFiles = fs
     .readdirSync(backupDir)
@@ -414,6 +460,7 @@ export function loadAppState() {
 export function saveAppState(state) {
   const database = getDatabase();
   const normalized = normalizeAppState(state);
+
   if (!normalized) {
     throw new TypeError("Invalid app state.");
   }
@@ -500,7 +547,6 @@ export function restoreLatestBackup() {
     try {
       const raw = fs.readFileSync(backup.filePath, "utf8");
       const parsed = JSON.parse(raw);
-
       if (parsed?.backupType === "before-restore") {
         continue;
       }
