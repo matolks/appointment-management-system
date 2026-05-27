@@ -20,9 +20,6 @@ import {
   restoreLatestBackup,
   getBackupDirectory,
   clearOldBackups,
-  benchmarkAppStateStorage, //
-  benchmarkRawCurrentRowQuery, //
-  benchmarkRealChangedSaveWithBackup, //
 } from "./database.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -59,10 +56,6 @@ function getBackupDefaultFileName() {
   return `appointment-manager-backup-${timestamp}.json`;
 }
 
-function shouldRunDatabaseBenchmark() {
-  return !app.isPackaged && process.env.BENCHMARK_DB === "1";
-}
-
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -77,16 +70,6 @@ async function createWindow() {
   });
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
-
-    if (shouldRunDatabaseBenchmark()) {
-      console.log("Running database benchmark...");
-      // For testing
-      setTimeout(() => {
-        benchmarkAppStateStorage();
-        benchmarkRawCurrentRowQuery();
-        benchmarkRealChangedSaveWithBackup();
-      }, 1000);
-    }
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event) => {
