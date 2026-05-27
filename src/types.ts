@@ -74,10 +74,11 @@ export type Opening = {
   day: DayCode;
   startTime: string;
   endTime: string;
+  isSurgery: boolean;
 };
 
 export type PersistedAppState = {
-  version: 1;
+  version: number;
   providers: Provider[];
   entries: WaitlistEntry[];
   openings: Opening[];

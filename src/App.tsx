@@ -1,7 +1,3 @@
-// how much time is an appointment (if it ranges what is it) - nick
-// The day is 8-6 correct - nick
-// is name in 1 column
-
 /*
  * Copyright (c) 2026 Vince Matolka.
  * All rights reserved.
@@ -10,6 +6,9 @@
  * Unauthorized copying, modification, distribution, or use is prohibited
  * without written permission from the copyright owner.
  */
+
+// Backsups, be able to go back more not just toggle
+// How to maintain if necessary - for now maybe not needed.
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
@@ -48,8 +47,6 @@ type OpeningSegment = {
   isLastPiece: boolean;
 };
 
-// EditingOpening carries _original so we can revert; EditingProvider carries _originalName
-// so we can update references across openings/entries when a provider is renamed
 type EditingOpening  = Opening  & { _original?: Opening };
 type EditingEntry  = WaitlistEntry;
 type EditingProvider  = Provider & { _originalName?: string };
@@ -66,30 +63,17 @@ const DAY_LABELS: { code: DayCode; label: string }[] = [
   { code: "F",  label: "Fri" },
 ];
 
-// Calendar renders 8:00 AM – 6:00 PM
-const CAL_START_MIN = 8 * 60; 
-const CAL_END_MIN   = 18 * 60; 
-const CAL_SPAN      = CAL_END_MIN - CAL_START_MIN; 
-
-// Drag/resize snaps to 15 minute intervals
-const SNAP = 15;
-
-// Old openings and history records are purged after this many days
+const CAL_START_MIN = 8 * 60;
+const CAL_END_MIN = 18 * 60;
+const CAL_SPAN = CAL_END_MIN - CAL_START_MIN;
+const SNAP = 5;
+const BASE_APPOINTMENT_MINUTES = 20;
+const SURGERY_APPOINTMENT_MINUTES = 30;
 const RETENTION_DAYS = 14;
-
-// Debounces SQLite writes so drag/resize actions do not create excessive backups.
-const STORAGE_SAVE_DEBOUNCE_MS = 350;
-
-// Hourly labels 
+const STORAGE_SAVE_DEBOUNCE_MS = 500;
 const TIME_SLOT_LABELS = buildTimeOptions(CAL_START_MIN, CAL_END_MIN - 60, 60);
-
-// All 15 minute marks used in dropdowns.
 const ALL_TIME_OPTIONS = buildTimeOptions(CAL_START_MIN, CAL_END_MIN, SNAP);
-
-// Default provider color for new or edited providers
 const DEFAULT_PROVIDER_COLOR = "#5877ff";
-
-// Used when an imported sheet references providers that do not exist yet.
 const IMPORT_PROVIDER_COLORS = [
   "#5877ff", "#c9a227", "#6db870", "#d06060", "#9a77ff",
   "#4ca6a8", "#d47a3c", "#cc66aa", "#7898d8", "#7a9a54",
@@ -100,67 +84,43 @@ const IMPORT_PROVIDER_COLORS = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 function App(){
-  // View state
   const [activeView, setActiveView] = useState<ViewMode>("CALENDAR");
   const [waitlistHistoryPanel, setWaitlistHistoryPanel] = useState<WaitlistHistoryPanel>("ACTIVE");
   const [actionMode, setActionMode] = useState<ActionMode>("OPENING");
   const [isActionPageOpen, setIsActionPageOpen] = useState(false);
-
-  // Search state for each waitlist section/tab
   const [activeWaitlistSearch, setActiveWaitlistSearch] = useState("");
   const [scheduledSearch, setScheduledSearch] = useState("");
   const [removedSearch, setRemovedSearch] = useState("");
-
-  // Calendar interaction state
   const [calendarLocked, setCalendarLocked] = useState(true);
-  const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(1);
+  const [selectedOpeningId, setSelectedOpeningId] = useState<number | null>(null);
   const [hoveredOpeningId, setHoveredOpeningId] = useState<number | null>(null);
   const [weekStartDate, setWeekStartDate] = useState<string>(getCurrentWeekStartDate);
-
-  // Edit / modal state
   const [editingOpening, setEditingOpening] = useState<EditingOpening  | null>(null);
   const [editingEntry, setEditingEntry] = useState<EditingEntry    | null>(null);
   const [editingProvider, setEditingProvider] = useState<EditingProvider | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval  | null>(null);
   const [reasonPreview, setReasonPreview] = useState<{ title: string; text: string } | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-
-  // Import / export modal state 
   const [isImportExportModalOpen, setIsImportExportModalOpen] = useState(false);
   const [importPreviewRows, setImportPreviewRows] = useState<ImportPreviewRow[]>([]);
   const [importFileName, setImportFileName] = useState("");
   const [importError, setImportError] = useState("");
   const [isImportDragOver, setIsImportDragOver] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Core data 
   const [providers, setProviders] = useState<Provider[]>([]);
-
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
-
   const [openings, setOpenings] = useState<Opening[]>([]);
-
   const [scheduledRecords, setScheduledRecords] = useState<ScheduledRecord[]>([]);
   const [removedRecords, setRemovedRecords] = useState<RemovedRecord[]>([]);
-
-  // Prevents the app from overwriting saved SQLite data before the first load finishes
   const [hasLoadedStorage, setHasLoadedStorage] = useState(false);
-
-  // Database backup/status UI state
   const [isStorageBusy, setIsStorageBusy] = useState(false);
   const [storageMessage, setStorageMessage] = useState("");
   const [storageError, setStorageError] = useState("");
-
-  // Stores the user's current start/end selection per eligible entry on the calendar panel
   const [scheduleSelections, setScheduleSelections] = useState<Record<number, ScheduleSelection>>({});
-
-  // "Add Opening" form state 
   const [openingProvider, setOpeningProvider] = useState("");
   const [openingDate, setOpeningDate] = useState(getDefaultOpeningDate);
   const [openingStartTime, setOpeningStartTime] = useState("8:00");
   const [openingEndTime, setOpeningEndTime] = useState("9:00");
-
-  // "Add to Waitlist" form state 
   const [waitlistDateAdded, setWaitlistDateAdded] = useState(getTodayDateInputValue);
   const [waitlistFirstName, setWaitlistFirstName] = useState("");
   const [waitlistLastName, setWaitlistLastName] = useState("");
@@ -169,12 +129,9 @@ function App(){
   const [waitlistReason, setWaitlistReason] = useState(getTierReason(1));
   const [waitlistAvailableDays, setWaitlistAvailableDays] = useState<DayCode[]>([]);
   const [waitlistAvailableTimeRanges, setWaitlistAvailableTimeRanges] = useState<TimeRangeDraft[]>([]);
-
-  // "Edit Providers" form state 
   const [providerName, setProviderName] = useState("");
   const [providerColor, setProviderColor] = useState(DEFAULT_PROVIDER_COLOR);
 
-  // Drag state
   type DragState = {
     openingId: number;
     mode: "move" | "resize-top" | "resize-bottom";
@@ -269,7 +226,6 @@ function App(){
   // EFFECTS
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Load saved state from SQLite
   useEffect(() => {
     async function loadStoredState(){
       if(!window.appStorage){
@@ -289,12 +245,13 @@ function App(){
       } catch (error){
         console.error("Failed to load app state from SQLite:", error);
         setStorageError("Database load failed. Automatic saving is disabled until the app is restarted.");
+        // Still mark as loaded so the app is usable even if storage fails
+        setHasLoadedStorage(true);
       }
     }
     loadStoredState();
   }, []);
 
-  // Save state to SQLite 
   useEffect(() => {
     if(!hasLoadedStorage || !window.appStorage) return;
     const saveTimeoutId = window.setTimeout(() => {
@@ -306,54 +263,58 @@ function App(){
     return () => window.clearTimeout(saveTimeoutId);
   }, [hasLoadedStorage, buildPersistedAppState]);
 
-  // Retention rules:
-  // - Openings expire only when the opening date is more than RETENTION_DAYS in the past.
-  // - Scheduled records expire only when the appointment date is more than RETENTION_DAYS in the past.
-  // - Removed records expire when the removed date is more than RETENTION_DAYS in the past.
-  // Entries whose scheduled/removed records expire are also removed from the backing entries array.
+  // Retention cleanup 
   useEffect(() => {
     const today = startOfLocalDay(new Date());
-    const staleScheduledEntryIds = new Set(
-      scheduledRecords
-        .filter(r => isDateOlderThanRetentionDays(r.appointmentDate, today))
-        .map(r => r.entryId),
-    );
-    const staleRemovedEntryIds = new Set(
-      removedRecords
-        .filter(r => isDateOlderThanRetentionDays(r.dateRemoved, today))
-        .map(r => r.entryId),
-    );
     setOpenings(prev =>
       filterWithoutStateChange(prev, o => !isDateOlderThanRetentionDays(o.date, today)),
     );
-    setScheduledRecords(prev =>
-      filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.appointmentDate, today)),
-    );
-    setRemovedRecords(prev =>
-      filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.dateRemoved, today)),
-    );
-    if(staleScheduledEntryIds.size > 0 || staleRemovedEntryIds.size > 0){
-      setEntries(prev =>
-        filterWithoutStateChange(prev, e =>
-          !(e.status === "SCHEDULED" && staleScheduledEntryIds.has(e.id)) &&
-          !(e.status === "REMOVED"   && staleRemovedEntryIds.has(e.id)),
-        ),
-      );
-    }
-  }, [scheduledRecords, removedRecords]);
 
-  // Keep provider dropdown state valid after providers are added, removed, imported, or renamed.
+    setScheduledRecords(prev => {
+      const stale = new Set(
+        prev
+          .filter(r => isDateOlderThanRetentionDays(r.appointmentDate, today))
+          .map(r => r.entryId),
+      );
+      const next = filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.appointmentDate, today));
+      if(stale.size > 0){
+        setEntries(e =>
+          filterWithoutStateChange(e, entry =>
+            !(entry.status === "SCHEDULED" && stale.has(entry.id)),
+          ),
+        );
+      }
+      return next;
+    });
+
+    setRemovedRecords(prev => {
+      const stale = new Set(
+        prev
+          .filter(r => isDateOlderThanRetentionDays(r.dateRemoved, today))
+          .map(r => r.entryId),
+      );
+      const next = filterWithoutStateChange(prev, r => !isDateOlderThanRetentionDays(r.dateRemoved, today));
+      if(stale.size > 0){
+        setEntries(e =>
+          filterWithoutStateChange(e, entry =>
+            !(entry.status === "REMOVED" && stale.has(entry.id)),
+          ),
+        );
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs once on mount
+
   useEffect(() => {
     setOpeningProvider(current =>
       providers.some(p => p.name === current) ? current : providers[0]?.name ?? "",
     );
-
     setWaitlistProvider(current =>
       providers.some(p => p.name === current) ? current : providers[0]?.name ?? "",
     );
   }, [providers]);
 
-  // If the selected opening is deleted (by cleanup or the user), deselect it
   useEffect(() => {
     if(selectedOpeningId !== null && !openings.some(o => o.id === selectedOpeningId)){
       setSelectedOpeningId(null);
@@ -369,7 +330,7 @@ function App(){
     if(!d) return;
     e.preventDefault();
     const dyMin  = ((e.clientY - d.startY) / d.colHeightPx) * CAL_SPAN;
-    const minDur = 30; // minimum opening duration in minutes
+    const minDur = 20;
     setOpenings(prev => prev.map(o => {
       if(o.id !== d.openingId) return o;
       let newStart = d.origStartMin;
@@ -378,9 +339,8 @@ function App(){
         const dur = d.origEndMin - d.origStartMin;
         newStart = snapToInterval(d.origStartMin + dyMin, SNAP);
         newEnd   = newStart + dur;
-        // Clamp so the block doesn't leave the calendar bounds.
         if(newStart < CAL_START_MIN){ newStart = CAL_START_MIN; newEnd = newStart + dur; }
-        if(newEnd   > CAL_END_MIN)   { newEnd   = CAL_END_MIN;   newStart = newEnd - dur; }
+        if(newEnd   > CAL_END_MIN)  { newEnd   = CAL_END_MIN;   newStart = newEnd - dur; }
       } else if(d.mode === "resize-top"){
         newStart = snapToInterval(d.origStartMin + dyMin, SNAP);
         newStart = Math.max(CAL_START_MIN, Math.min(newStart, d.origEndMin - minDur));
@@ -395,7 +355,6 @@ function App(){
   const handlePointerUp = useCallback(() => {
     const finishedDragId = dragRef.current?.openingId ?? null;
     if(finishedDragId !== null){
-      // After a drag, merge any now-overlapping openings from the same provider.
       setOpenings(prev => mergeSameProviderOpenings(prev, finishedDragId));
       setSelectedOpeningId(finishedDragId);
     }
@@ -419,7 +378,7 @@ function App(){
       startY: e.clientY,
       origStartMin: timeToMinutes(opening.startTime),
       origEndMin: timeToMinutes(opening.endTime),
-      colHeightPx,
+      colHeightPx: colHeightPx > 0 ? colHeightPx : 600,
     };
     setDraggingId(opening.id);
     window.addEventListener("pointermove", handlePointerMove, { passive: false });
@@ -446,7 +405,6 @@ function App(){
   // DERIVED / MEMOIZED DATA
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Build one date object per weekday for the displayed week
   const weekDates = useMemo(() => {
     const start = parseLocalDate(weekStartDate);
     return DAY_LABELS.map((day, i) => {
@@ -455,8 +413,9 @@ function App(){
       return { ...day, date, dateString: toDateInputValue(date) };
     });
   }, [weekStartDate]);
+
   const selectedOpening = openings.find(o => o.id === selectedOpeningId) ?? null;
-  // Eligible entries for the selected opening: same provider, waitlisted, availability overlap
+
   const eligibleEntries = useMemo(() => {
     if(!selectedOpening) return [];
     return entries
@@ -465,32 +424,37 @@ function App(){
         e.provider === selectedOpening.provider &&
         isEntryAvailableForOpening(e, selectedOpening),
       )
-      // Sort by tier first, then by how long they've been waiting (oldest first)
       .sort((a, b) => a.tier !== b.tier
         ? a.tier - b.tier
         : new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime(),
       );
   }, [entries, selectedOpening]);
+
   const waitlistedCount = entries.filter(e => e.status === "WAITLISTED").length;
   const scheduledCount  = scheduledRecords.length;
   const importValidRows = importPreviewRows.filter(row => row.status !== "ERROR");
   const importErrorRows = importPreviewRows.filter(row => row.status === "ERROR");
   const importWarningRows = importPreviewRows.filter(row => row.status === "WARNING");
   const todayDateString = getTodayDateInputValue();
+
   const filteredScheduledRecords = useMemo(
     () => scheduledRecords.filter(record => scheduledRecordMatchesSearch(record, scheduledSearch)),
     [scheduledRecords, scheduledSearch],
   );
+
   const upcomingScheduledRecords = [...filteredScheduledRecords]
     .filter(r => !isPastDate(r.appointmentDate, todayDateString))
     .sort(compareScheduledRecordsByAppointment);
+
   const pastScheduledRecords = [...filteredScheduledRecords]
     .filter(r => isPastDate(r.appointmentDate, todayDateString))
     .sort((a, b) => compareScheduledRecordsByAppointment(b, a));
+
   const filteredRemovedRecords = useMemo(
     () => removedRecords.filter(record => removedRecordMatchesSearch(record, removedSearch)),
     [removedRecords, removedSearch],
   );
+
   const sortedWaitlistEntries = useMemo(() => {
     const waitlistedOnly = entries
       .filter(e => e.status === "WAITLISTED")
@@ -502,19 +466,54 @@ function App(){
         case "name": return getFullName(a).localeCompare(getFullName(b)) * dir;
         case "provider": return a.provider.localeCompare(b.provider) * dir;
         case "tier": return (a.tier - b.tier) * dir;
-        default: return a.status.localeCompare(b.status) * dir; // "status" sort field
+        default: return a.status.localeCompare(b.status) * dir;
       }
     });
   }, [entries, sortField, sortDirection, activeWaitlistSearch]);
-  // Label for the opening duration preview in the Add Opening form
-  const openingDurationLabel = (() => {
-    const diff = (timeToMinutes(openingEndTime) - timeToMinutes(openingStartTime)) / 60;
-    if(diff <= 0) return "—";
-    if(diff === 1) return "1 hr";
-    if(diff % 1 === 0) return `${diff} hrs`;
-    return `${diff.toFixed(1)} hrs`;
-  })();
+
+  function formatDurationLabel(totalMinutes: number): string {
+    if(totalMinutes <= 0) return "—";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const parts: string[] = [];
+    if(hours > 0){
+      parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
+    }
+    if(minutes > 0){
+      parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+    }
+    return parts.join(" ");
+  }
+
+  const openingDurationLabel = formatDurationLabel(
+    timeToMinutes(openingEndTime) - timeToMinutes(openingStartTime),
+  );
+
+  const openingDurationError = getOpeningDurationError(openingStartTime, openingEndTime);
+  const editingOpeningDurationError = editingOpening
+    ? getOpeningDurationError(editingOpening.startTime, editingOpening.endTime)
+    : "";
+  const waitlistAvailabilityError = getAvailabilityRangeError(waitlistAvailableTimeRanges);
+  const editingEntryAvailabilityError = editingEntry
+    ? getAvailabilityRangeError(editingEntry.availableTimes.map((range, index) => rangeToDraft(range, index + 1)))
+    : "";
   const waitlistInitials = (waitlistFirstName[0] ?? "") + (waitlistLastName[0] ?? "");
+
+  // Derive whether the add-opening form has enough valid info to submit
+  const canAddOpening =
+    Boolean(openingProvider) &&
+    Boolean(openingDate) &&
+    Boolean(openingStartTime) &&
+    Boolean(openingEndTime) &&
+    !openingDurationError;
+
+  // Derive whether the add-waitlist form has enough valid info to submit
+  const canAddWaitlistEntry =
+    Boolean(waitlistDateAdded) &&
+    Boolean(waitlistLastName.trim()) &&
+    Boolean(waitlistProvider) &&
+    Boolean(waitlistReason.trim()) &&
+    !waitlistAvailabilityError;
 
   // ─────────────────────────────────────────────────────────────────────────
   // MUTATIONS — NAVIGATION & ACTIONS
@@ -522,9 +521,20 @@ function App(){
 
   function goToPreviousWeek(){ setWeekStartDate(d => moveDateByDays(d, -7)); setSelectedOpeningId(null); }
   function goToNextWeek(){ setWeekStartDate(d => moveDateByDays(d,  7)); setSelectedOpeningId(null); }
+
   function openActionPage(){
     setActionMode(activeView === "WAITLIST" ? "WAITLIST_ENTRY" : "OPENING");
     setIsActionPageOpen(true);
+  }
+
+  function toggleSelectedOpeningSurgery(){
+    if(!selectedOpening) return;
+    setOpenings(prev => prev.map(opening =>
+      opening.id === selectedOpening.id
+        ? { ...opening, isSurgery: !isSurgeryOpening(opening) }
+        : opening,
+    ));
+    setScheduleSelections({});
   }
 
   function clearImportPreview(){
@@ -542,6 +552,12 @@ function App(){
 
   function handleImportFile(file: File | null){
     if(!file) return;
+    // FIX: guard against unsupported file types early
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if(!["xlsx", "xls", "csv"].includes(ext)){
+      setImportError("Unsupported file type. Please use .xlsx, .xls, or .csv.");
+      return;
+    }
     setImportError("");
     setImportFileName(file.name);
     const reader = new FileReader();
@@ -571,12 +587,12 @@ function App(){
     const providerNameByKey = new Map(providers.map(p => [p.name.trim().toLowerCase(), p.name]));
     const providersToAdd: Provider[] = [];
     for (const row of rowsToImport){
-      const providerName = row.provider.trim();
-      const key = providerName.toLowerCase();
+      const pName = row.provider.trim();
+      const key = pName.toLowerCase();
       if(!key || providerNameByKey.has(key)) continue;
-      providerNameByKey.set(key, providerName);
+      providerNameByKey.set(key, pName);
       providersToAdd.push({
-        name:  providerName,
+        name:  pName,
         color: IMPORT_PROVIDER_COLORS[(providers.length + providersToAdd.length) % IMPORT_PROVIDER_COLORS.length],
       });
     }
@@ -640,19 +656,21 @@ function App(){
     const apptEnd = timeToMinutes(appointmentEndTime);
     const openingStart = timeToMinutes(selectedOpening.startTime);
     const openingEnd = timeToMinutes(selectedOpening.endTime);
+    const minimumMinutes = getMinimumAppointmentMinutes(selectedOpening);
 
-    // Guard: appointment must be at least 1 hour and fully within the opening.
-    if(apptEnd - apptStart < 60) return;
+    if(apptEnd - apptStart < minimumMinutes) return;
     if(apptStart < openingStart || apptEnd > openingEnd) return;
     if(!getEligibleScheduleWindows(entry, selectedOpening).some(
       w => apptStart >= w.start && apptEnd <= w.end)
     ) return;
+
     if(isAppointmentStartInPast(selectedOpening.date, appointmentStartTime)){
       const confirmed = window.confirm(
         `This appointment is in the past: ${formatDisplayDate(selectedOpening.date)} from ${formatTimeRange(appointmentStartTime, appointmentEndTime)}. Continue scheduling it for tracking purposes?`,
       );
       if(!confirmed) return;
     }
+
     setScheduledRecords(prev => [
       {
         id: getNextId(prev),
@@ -673,7 +691,6 @@ function App(){
     ]);
     setEntries(prev => prev.map(e => e.id === entryId ? { ...e, status: "SCHEDULED" } : e));
     setOpenings(prev => splitOpeningForAppointment(prev, selectedOpening.id, appointmentStartTime, appointmentEndTime));
-    // Clear the stored selection for this entry and deselect the opening
     setScheduleSelections(prev => {
       const next = { ...prev };
       delete next[entryId];
@@ -687,15 +704,10 @@ function App(){
   // ─────────────────────────────────────────────────────────────────────────
 
   function addOpening(){
-    if(!openingProvider || !openingDate || !openingStartTime || !openingEndTime) return;
-    if(timeToMinutes(openingEndTime) <= timeToMinutes(openingStartTime)){
-      alert("End time must be after start time.");
-      return;
-    }
-    // Weekends are outside the calendar's M–F range; warn and abort
+    if(!canAddOpening) return;
     const dayCode = getDayCodeFromDate(openingDate);
     if(!dayCode){
-      alert("Openings can only be added on weekdays (Mon–Fri).");
+      alert("Openings can only be added on weekdays (Mon-Fri).");
       return;
     }
     if(isAppointmentStartInPast(openingDate, openingStartTime)){
@@ -711,8 +723,8 @@ function App(){
       day: dayCode,
       startTime: openingStartTime,
       endTime: openingEndTime,
+      isSurgery: false,
     };
-    // Merge immediately in case it overlaps an existing opening from the same provider
     setOpenings(prev => mergeSameProviderOpenings([...prev, nextOpening], nextOpening.id));
     setSelectedOpeningId(nextOpening.id);
   }
@@ -720,17 +732,21 @@ function App(){
   function addProvider(){
     const cleanName = providerName.trim();
     if(!cleanName) return;
-    if(providers.some(p => p.name.toLowerCase() === cleanName.toLowerCase())) return;
+    if(providers.some(p => p.name.toLowerCase() === cleanName.toLowerCase())){
+      // Duplicate error
+      alert(`A provider named "${cleanName}" already exists.`);
+      return;
+    }
     setProviders(prev => [...prev, { name: cleanName, color: providerColor }]);
     setProviderName("");
     setProviderColor(DEFAULT_PROVIDER_COLOR);
   }
 
   function addWaitlistEntry(){
+    if(!canAddWaitlistEntry) return;
     const firstName = waitlistFirstName.trim();
     const lastName = waitlistLastName.trim();
     const reason = waitlistReason.trim();
-    if(!waitlistDateAdded || !firstName || !lastName || !waitlistProvider || !reason) return;
     const nextEntry: WaitlistEntry = {
       id: getNextId(entries),
       dateAdded: waitlistDateAdded,
@@ -755,13 +771,14 @@ function App(){
 
   function saveEditingOpening(){
     if(!editingOpening) return;
-    if(timeToMinutes(editingOpening.endTime) <= timeToMinutes(editingOpening.startTime)){
-      alert("End time must be after start time.");
+    const durationError = getOpeningDurationError(editingOpening.startTime, editingOpening.endTime);
+    if(durationError){
+      alert(durationError);
       return;
     }
     const dayCode = getDayCodeFromDate(editingOpening.date);
     if(!dayCode){
-      alert("Openings can only be saved on weekdays (Mon–Fri).");
+      alert("Openings can only be saved on weekdays (Mon-Fri).");
       return;
     }
     if(isAppointmentStartInPast(editingOpening.date, editingOpening.startTime)){
@@ -770,8 +787,8 @@ function App(){
       );
       if(!confirmed) return;
     }
-    // Do not persist edit-only metadata like _original into app state / SQLite.
     const { _original, ...cleanOpening } = editingOpening;
+    void _original; // suppress unused-var lint
     setOpenings(prev =>
       mergeSameProviderOpenings(
         prev.map(o => o.id === cleanOpening.id
@@ -787,8 +804,16 @@ function App(){
 
   function saveEditingEntry(){
     if(!editingEntry) return;
+    if(editingEntryAvailabilityError) return;
+    // Guard against saving an entry with an empty last name
+    if(!editingEntry.lastName.trim()){
+      alert("Patient name cannot be empty.");
+      return;
+    }
     const normalizedEntry: WaitlistEntry = {
       ...editingEntry,
+      firstName: editingEntry.firstName.trim(),
+      lastName: editingEntry.lastName.trim(),
       reason: editingEntry.reason.trim(),
       availableTimes: serializeTimeRangeDrafts(
         editingEntry.availableTimes.map((range, index) => rangeToDraft(range, index + 1)),
@@ -802,7 +827,10 @@ function App(){
     if(!editingProvider) return;
     const oldName = editingProvider._originalName ?? editingProvider.name;
     const newName = editingProvider.name.trim();
-    if(!newName) return;
+    if(!newName){
+      alert("Provider name cannot be empty.");
+      return;
+    }
     const duplicateProvider = providers.some(
       p => p.name !== oldName && p.name.trim().toLowerCase() === newName.toLowerCase(),
     );
@@ -811,7 +839,6 @@ function App(){
       return;
     }
     setProviders(prev => prev.map(p => p.name === oldName ? { name: newName, color: editingProvider.color } : p));
-    // If the provider was renamed, update all references across openings, entries, and history.
     if(oldName !== newName){
       setOpenings(prev => prev.map(o => o.provider === oldName ? { ...o, provider: newName } : o));
       setEntries(prev  => prev.map(e => e.provider === oldName ? { ...e, provider: newName } : e));
@@ -822,10 +849,9 @@ function App(){
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // SECTION 12: MUTATIONS — REMOVALS
+  // MUTATIONS — REMOVALS
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Each requestRemove* function populates the confirmation modal.
   function requestRemoveEntry(entry: WaitlistEntry){
     setPendingRemoval({
       type: "ENTRY",
@@ -918,7 +944,6 @@ function App(){
         break;
       }
       case "SCHEDULED_RECORD": {
-        // Deleting a scheduled record also removes the underlying entry entirely.
         setScheduledRecords(prev => prev.filter(r => r.id !== pendingRemoval.id));
         setEntries(prev => prev.filter(e => e.id !== pendingRemoval.entryId));
         break;
@@ -933,7 +958,6 @@ function App(){
         const fallback    = providers.find(p => p.name !== removedName)?.name ?? "";
         setProviders(prev => prev.filter(p => p.name !== removedName));
         setOpenings(prev  => prev.filter(o => o.provider !== removedName));
-        // If the removed provider was selected in either form, fall back to the first remaining.
         if(openingProvider  === removedName) setOpeningProvider(fallback);
         if(waitlistProvider === removedName) setWaitlistProvider(fallback);
         break;
@@ -943,7 +967,7 @@ function App(){
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // SECTION 13: MUTATIONS — AVAILABILITY / TIME RANGE FORM HELPERS
+  // MUTATIONS — AVAILABILITY / TIME RANGE FORM HELPERS
   // ─────────────────────────────────────────────────────────────────────────
 
   function toggleWaitlistAvailableDay(day: DayCode){
@@ -961,7 +985,7 @@ function App(){
 
   function updateWaitlistAvailableTimeRange(id: number, field: "startTime" | "endTime", value: string){
     setWaitlistAvailableTimeRanges(prev =>
-      prev.map(r => r.id === id ? normalizeDraftTimeRange({ ...r, [field]: value }, field) : r),
+      prev.map(r => r.id === id ? { ...r, [field]: value } : r),
     );
   }
 
@@ -969,7 +993,6 @@ function App(){
     setWaitlistAvailableTimeRanges(prev => prev.filter(r => r.id !== id));
   }
 
-  // Mirror of the above for the edit-entry modal
   function addEditingEntryTimeRange(){
     if(!editingEntry) return;
     const drafts = editingEntry.availableTimes.map((range, index) => rangeToDraft(range, index + 1));
@@ -984,8 +1007,11 @@ function App(){
   function updateEditingEntryTimeRange(index: number, field: "startTime" | "endTime", value: string){
     if(!editingEntry) return;
     const ranges = editingEntry.availableTimes.map(rangeToDraft);
-    ranges[index] = normalizeDraftTimeRange({ ...ranges[index], [field]: value }, field);
-    setEditingEntry({ ...editingEntry, availableTimes: serializeTimeRangeDrafts(ranges) });
+    ranges[index] = { ...ranges[index], [field]: value };
+    setEditingEntry({
+      ...editingEntry,
+      availableTimes: ranges.map(range => `${range.startTime}-${range.endTime}`),
+    });
   }
 
   function removeEditingEntryTimeRange(index: number){
@@ -1003,9 +1029,10 @@ function App(){
     entry: WaitlistEntry,
     opening: Opening,
   ){
+    const minimumMinutes = getMinimumAppointmentMinutes(opening);
     const current = getResolvedScheduleSelection(entry, opening, scheduleSelections[entryId]);
     const windows = getEligibleScheduleWindows(entry, opening);
-    const next = normalizeScheduleSelection({ ...current, [field]: value }, field, windows);
+    const next = normalizeScheduleSelection({ ...current, [field]: value }, field, windows, minimumMinutes);
     setScheduleSelections(prev => ({ ...prev, [entryId]: next }));
   }
 
@@ -1149,30 +1176,58 @@ function App(){
   }
 
   async function clearOldDatabaseBackups(){
-  if(!window.appStorage){
-    setStorageError("Backup cleanup is only available in the desktop app.");
-    return;
-  }
-  const confirmed = window.confirm(
-    "Clear old automatic backups? This keeps the newest 50 automatic backups and removes automatic backups older than one year.",
-  );
-  if(!confirmed) return;
-  setIsStorageBusy(true);
-  setStorageError("");
-  setStorageMessage("");
-  try {
-    const result = await window.appStorage.clearOldBackups();
-    setStorageMessage(
-      `Old backup cleanup complete. Deleted ${result.deletedCount} backup${result.deletedCount === 1 ? "" : "s"}. Kept ${result.keptCount}.`,
+    if(!window.appStorage){
+      setStorageError("Backup cleanup is only available in the desktop app.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Clear old automatic backups? This keeps the newest 50 automatic backups and removes automatic backups older than one year.",
     );
-  } catch (error){
-    console.error("Failed to clear old backups:", error);
-    setStorageError("Old backup cleanup failed.");
-  } finally {
-    setIsStorageBusy(false);
+    if(!confirmed) return;
+    setIsStorageBusy(true);
+    setStorageError("");
+    setStorageMessage("");
+    try {
+      const result = await window.appStorage.clearOldBackups();
+      setStorageMessage(
+        `Old backup cleanup complete. Deleted ${result.deletedCount} backup${result.deletedCount === 1 ? "" : "s"}. Kept ${result.keptCount}.`,
+      );
+    } catch (error){
+      console.error("Failed to clear old backups:", error);
+      setStorageError("Old backup cleanup failed.");
+    } finally {
+      setIsStorageBusy(false);
+    }
   }
-}
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // KEYBOARD SHORTCUTS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Escape closes any open modal or action page
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent){
+      if(e.key !== "Escape") return;
+      // Close modals/overlays in priority order
+      if(pendingRemoval){ setPendingRemoval(null); return; }
+      if(reasonPreview){ setReasonPreview(null); return; }
+      if(editingOpening){ setEditingOpening(null); return; }
+      if(editingEntry){ setEditingEntry(null); return; }
+      if(editingProvider){ setEditingProvider(null); return; }
+      if(isSettingsModalOpen){ setIsSettingsModalOpen(false); return; }
+      if(isImportExportModalOpen){ closeImportExportModal(); return; }
+      if(isActionPageOpen){ setIsActionPageOpen(false); return; }
+      // Deselect opening
+      if(selectedOpeningId !== null){ setSelectedOpeningId(null); }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pendingRemoval, reasonPreview, editingOpening, editingEntry,
+    editingProvider, isSettingsModalOpen, isImportExportModalOpen,
+    isActionPageOpen, selectedOpeningId,
+  ]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER HELPERS
@@ -1192,43 +1247,57 @@ function App(){
     );
   }
 
-  /* Shared table for both "Scheduled" and "Past Scheduled" sections. */
   function renderScheduledRecordsTable(records: ScheduledRecord[]){
     return (
-      <table>
-        <thead>
-          <tr>
-            <th>Scheduled On</th>
-            <th>Name</th>
-            <th>Provider</th>
-            <th>Tier</th>
-            <th>Status</th>
-            <th>Appointment Date</th>
-            <th>Time</th>
-            <th>Reason</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {records.map(record => (
-            <tr key={record.id}>
-              <td>{record.dateScheduled}</td>
-              <td>{formatPersonName(record.firstName, record.lastName)}</td>
-              <td>{record.provider}</td>
-              <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
-              <td>{record.status}</td>
-              <td>{record.appointmentDay} · {formatDisplayDate(record.appointmentDate)}</td>
-              <td>{formatTimeRange(record.startTime, record.endTime)}</td>
-              <td className="reason-cell">{renderReasonCell(record.reason, `Reason for ${formatPersonName(record.firstName, record.lastName)}`)}</td>
-              <td>
-                <button className="remove-button" onClick={() => requestDeleteScheduledRecord(record)}>
-                  Delete
-                </button>
-              </td>
+      <div className="table-scroll history-table-scroll">
+        <table className="history-table scheduled-table">
+          <colgroup>
+            <col className="scheduled-col-date" />
+            <col className="scheduled-col-name" />
+            <col className="scheduled-col-provider" />
+            <col className="scheduled-col-tier" />
+            <col className="scheduled-col-status" />
+            <col className="scheduled-col-appointment" />
+            <col className="scheduled-col-time" />
+            <col className="scheduled-col-reason" />
+            <col className="scheduled-col-actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Scheduled On</th>
+              <th>Name</th>
+              <th>Provider</th>
+              <th>Tier</th>
+              <th>Status</th>
+              <th>Appointment Date</th>
+              <th>Time</th>
+              <th>Reason</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {records.map(record => (
+              <tr key={record.id}>
+                <td>{record.dateScheduled}</td>
+                <td className="truncate-cell" title={formatPersonName(record.firstName, record.lastName)}>
+                  {formatPersonName(record.firstName, record.lastName)}
+                </td>
+                <td className="truncate-cell" title={record.provider}>{record.provider}</td>
+                <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
+                <td>{record.status}</td>
+                <td>{record.appointmentDay} · {formatDisplayDate(record.appointmentDate)}</td>
+                <td>{formatTimeRange(record.startTime, record.endTime)}</td>
+                <td className="reason-cell">{renderReasonCell(record.reason, `Reason for ${formatPersonName(record.firstName, record.lastName)}`)}</td>
+                <td>
+                  <button className="remove-button" onClick={() => requestDeleteScheduledRecord(record)}>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
   }
 
@@ -1238,6 +1307,9 @@ function App(){
 
   const cornerActionLabel = activeView === "WAITLIST" ? "+ Add to Waitlist" : "+ Add Opening";
   const storageApiAvailable = Boolean(window.appStorage);
+
+  // FIX: no providers yet — show a friendly empty state on the calendar
+  const hasNoProviders = providers.length === 0;
 
   return (
     <main className="app-shell">
@@ -1294,14 +1366,20 @@ function App(){
           {/* Legend + lock panel */}
           <aside className="legend-panel">
             <h2>Legend</h2>
-            <div className="provider-list">
-              {providers.map(p => (
-                <div className="provider-key" key={p.name}>
-                  <span>{p.name}</span>
-                  <span className="provider-color" style={{ backgroundColor: p.color }} />
-                </div>
-              ))}
-            </div>
+            {hasNoProviders ? (
+              <p className="empty-message" style={{ fontSize: 12, textAlign: "center", marginTop: 8 }}>
+                No providers yet.
+              </p>
+            ) : (
+              <div className="provider-list">
+                {providers.map(p => (
+                  <div className="provider-key" key={p.name}>
+                    <span>{p.name}</span>
+                    <span className="provider-color" style={{ backgroundColor: p.color }} />
+                  </div>
+                ))}
+              </div>
+            )}
             <h3>Lock Calendar</h3>
             <div className="lock-section">
               <button
@@ -1326,10 +1404,23 @@ function App(){
           {/* Week grid */}
           <section className="calendar-panel">
             <div className="week-controls">
-              <button className="arrow-button" onClick={goToPreviousWeek}>←</button>
+              <button className="arrow-button" onClick={goToPreviousWeek} aria-label="Previous week">←</button>
               <h1>Week of {formatDisplayDate(weekStartDate)}</h1>
-              <button className="arrow-button" onClick={goToNextWeek}>→</button>
+              <button className="arrow-button" onClick={goToNextWeek} aria-label="Next week">→</button>
             </div>
+            {/* FIX: show a nudge when there are no providers */}
+            {hasNoProviders && (
+              <div className="calendar-empty-nudge">
+                <span>Add providers to get started.</span>
+                <button
+                  className="btn-primary"
+                  style={{ fontSize: 12, padding: "5px 14px" }}
+                  onClick={() => { setActionMode("EDIT_PROVIDERS"); setIsActionPageOpen(true); }}
+                >
+                  Edit Providers
+                </button>
+              </div>
+            )}
             <div className="calendar-grid">
               {weekDates.map(day => {
                 const dayOpenings = openings.filter(o => o.date === day.dateString);
@@ -1343,17 +1434,14 @@ function App(){
                       {isToday && <em>Today</em>}
                     </div>
                     <div className="day-body">
-                      {/* Hourly time labels */}
                       {TIME_SLOT_LABELS.map(time => (
                         <div className="time-row" key={time}>
                           <span>{formatDisplayTime(time)}</span>
                         </div>
                       ))}
-                      {/* Opening blocks */}
                       {openingSegments.map(segment => {
                         const color = providers.find(p => p.name === segment.opening.provider)?.color ?? "#999";
                         const isDragging = draggingId === segment.opening.id;
-                        // Always read live opening data so dragging re-positions in real time.
                         const opening = openings.find(o => o.id === segment.opening.id) ?? segment.opening;
                         return (
                           <div
@@ -1379,21 +1467,19 @@ function App(){
                             onMouseEnter={() => setHoveredOpeningId(segment.opening.id)}
                             onMouseLeave={() => setHoveredOpeningId(null)}
                           >
-                            {/* Top resize handle (unlock mode only) */}
                             {!calendarLocked && segment.isFirstPiece && (
                               <div
                                 className="resize-handle resize-top"
                                 onPointerDown={e => {
-                                  const col = e.currentTarget.closest(".day-body") as HTMLElement;
+                                  const col = e.currentTarget.closest(".day-body") as HTMLElement | null;
                                   startDrag(e, opening, "resize-top", col?.getBoundingClientRect().height ?? 600);
                                 }}
                               />
                             )}
-                            {/* Move handle + label */}
                             <div
                               className="opening-move-area"
                               onPointerDown={e => {
-                                const col = e.currentTarget.closest(".day-body") as HTMLElement;
+                                const col = e.currentTarget.closest(".day-body") as HTMLElement | null;
                                 startDrag(e, opening, "move", col?.getBoundingClientRect().height ?? 600);
                               }}
                             >
@@ -1406,7 +1492,6 @@ function App(){
                                 </>
                               )}
                             </div>
-                            {/* Inline edit button (visible on hover/select) */}
                             {segment.showLabel && (
                               <button
                                 className="opening-edit-btn"
@@ -1416,12 +1501,11 @@ function App(){
                                 ✎
                               </button>
                             )}
-                            {/* Bottom resize handle (unlock mode only) */}
                             {!calendarLocked && segment.isLastPiece && (
                               <div
                                 className="resize-handle resize-bottom"
                                 onPointerDown={e => {
-                                  const col = e.currentTarget.closest(".day-body") as HTMLElement;
+                                  const col = e.currentTarget.closest(".day-body") as HTMLElement | null;
                                   startDrag(e, opening, "resize-bottom", col?.getBoundingClientRect().height ?? 600);
                                 }}
                               />
@@ -1435,6 +1519,7 @@ function App(){
               })}
             </div>
           </section>
+
           {/* Eligible patients panel */}
           <aside className="eligible-panel">
             {selectedOpening ? (
@@ -1458,6 +1543,15 @@ function App(){
                       </button>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    className={isSurgeryOpening(selectedOpening) ? "surgery-pill-button active" : "surgery-pill-button"}
+                    aria-pressed={isSurgeryOpening(selectedOpening)}
+                    title={isSurgeryOpening(selectedOpening) ? "Surgery timing is on" : "Surgery timing is off"}
+                    onClick={toggleSelectedOpeningSurgery}
+                  >
+                    Surgery
+                  </button>
                 </div>
                 <div className="eligible-list-header">
                   <h3>Eligible Waitlist</h3>
@@ -1469,10 +1563,14 @@ function App(){
                   <div className="eligible-list">
                     {eligibleEntries.map(entry => {
                       if(!selectedOpening) return null;
+                      const minimumMinutes = getMinimumAppointmentMinutes(selectedOpening);
                       const windows      = getEligibleScheduleWindows(entry, selectedOpening);
                       const selection    = getResolvedScheduleSelection(entry, selectedOpening, scheduleSelections[entry.id]);
-                      const startOptions = getScheduleStartOptions(windows);
-                      const endOptions   = getScheduleEndOptions(windows, selection.startTime);
+                      const startOptions = getScheduleStartOptions(windows, minimumMinutes);
+                      const endOptions   = getScheduleEndOptions(windows, selection.startTime, minimumMinutes);
+
+                      // FIX: guard against empty option sets that would render empty selects
+                      if(startOptions.length === 0 || endOptions.length === 0) return null;
 
                       return (
                         <article className="eligible-card" key={entry.id}>
@@ -1560,6 +1658,7 @@ function App(){
           </aside>
         </section>
       )}
+
       {/* WAITLIST VIEW */}
       {!isActionPageOpen && activeView === "WAITLIST" && (
         <section className="waitlist-page">
@@ -1585,6 +1684,7 @@ function App(){
               </button>
             </div>
           </div>
+
           {/* Active waitlist table */}
           {waitlistHistoryPanel === "ACTIVE" && (
             <>
@@ -1607,39 +1707,52 @@ function App(){
                   {waitlistedCount === 0 ? "No patients are on the active waitlist." : "No active waitlist patients match this search."}
                 </p>
               ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th><button className="table-sort-button" onClick={() => handleSortChange("dateAdded")}>Date Added {getSortIndicator(sortField, sortDirection, "dateAdded")}</button></th>
-                      <th><button className="table-sort-button" onClick={() => handleSortChange("name")}>Name {getSortIndicator(sortField, sortDirection, "name")}</button></th>
-                      <th><button className="table-sort-button" onClick={() => handleSortChange("provider")}>Provider {getSortIndicator(sortField, sortDirection, "provider")}</button></th>
-                      <th><button className="table-sort-button" onClick={() => handleSortChange("tier")}>Tier {getSortIndicator(sortField, sortDirection, "tier")}</button></th>
-                      <th>Reason</th>
-                      <th>Dates</th>
-                      <th>Times</th>
-                      <th><button className="table-sort-button" onClick={() => handleSortChange("status")}>Status {getSortIndicator(sortField, sortDirection, "status")}</button></th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedWaitlistEntries.map(entry => (
-                      <tr key={entry.id}>
-                        <td>{entry.dateAdded}</td>
-                        <td>{getFullName(entry)}</td>
-                        <td>{entry.provider}</td>
-                        <td><span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span></td>
-                        <td className="reason-cell">{renderReasonCell(entry.reason, `Reason for ${getFullName(entry)}`)}</td>
-                        <td>{entry.availableDays.join(", ") || "Any"}</td>
-                        <td>{formatAvailableTimes(entry.availableTimes)}</td>
-                        <td>{entry.status}</td>
-                        <td>
-                          <button className="edit-btn-small" onClick={() => setEditingEntry({ ...entry })}>Edit</button>
-                          <button className="remove-button"  onClick={() => requestRemoveEntry(entry)}>Remove</button>
-                        </td>
+                <div className="table-scroll waitlist-table-scroll">
+                  <table className="waitlist-table">
+                    <colgroup>
+                      <col className="waitlist-col-date" />
+                      <col className="waitlist-col-name" />
+                      <col className="waitlist-col-provider" />
+                      <col className="waitlist-col-tier" />
+                      <col className="waitlist-col-reason" />
+                      <col className="waitlist-col-days" />
+                      <col className="waitlist-col-times" />
+                      <col className="waitlist-col-status" />
+                      <col className="waitlist-col-actions" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th><button className="table-sort-button" onClick={() => handleSortChange("dateAdded")}>Date Added {getSortIndicator(sortField, sortDirection, "dateAdded")}</button></th>
+                        <th><button className="table-sort-button" onClick={() => handleSortChange("name")}>Name {getSortIndicator(sortField, sortDirection, "name")}</button></th>
+                        <th><button className="table-sort-button" onClick={() => handleSortChange("provider")}>Provider {getSortIndicator(sortField, sortDirection, "provider")}</button></th>
+                        <th><button className="table-sort-button" onClick={() => handleSortChange("tier")}>Tier {getSortIndicator(sortField, sortDirection, "tier")}</button></th>
+                        <th>Reason</th>
+                        <th>Dates</th>
+                        <th>Times</th>
+                        <th><button className="table-sort-button" onClick={() => handleSortChange("status")}>Status {getSortIndicator(sortField, sortDirection, "status")}</button></th>
+                        <th>Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {sortedWaitlistEntries.map(entry => (
+                        <tr key={entry.id}>
+                          <td>{entry.dateAdded}</td>
+                          <td>{getFullName(entry)}</td>
+                          <td>{entry.provider}</td>
+                          <td><span className={`tier-badge tier-${entry.tier}`}>Tier {entry.tier}</span></td>
+                          <td className="reason-cell">{renderReasonCell(entry.reason, `Reason for ${getFullName(entry)}`)}</td>
+                          <td>{entry.availableDays.join(", ") || "Any"}</td>
+                          <td>{formatAvailableTimes(entry.availableTimes)}</td>
+                          <td>{entry.status}</td>
+                          <td>
+                            <button className="edit-btn-small" onClick={() => setEditingEntry({ ...entry })}>Edit</button>
+                            <button className="remove-button"  onClick={() => requestRemoveEntry(entry)}>Remove</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </>
           )}
@@ -1693,6 +1806,7 @@ function App(){
               </>
             )
           )}
+
           {/* Removed history */}
           {waitlistHistoryPanel === "REMOVED" && (
             removedRecords.length === 0 ? (
@@ -1716,44 +1830,59 @@ function App(){
                 {filteredRemovedRecords.length === 0 ? (
                   <p className="empty-message">No removed patients match this search.</p>
                 ) : (
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Removed On</th>
-                        <th>Name</th>
-                        <th>Provider</th>
-                        <th>Tier</th>
-                        <th>Status</th>
-                        <th>Date Added</th>
-                        <th>Reason</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredRemovedRecords.map(record => (
-                        <tr key={record.id}>
-                          <td>{record.dateRemoved}</td>
-                          <td>{formatPersonName(record.firstName, record.lastName)}</td>
-                          <td>{record.provider}</td>
-                          <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
-                          <td>{record.status}</td>
-                          <td>{record.dateAdded}</td>
-                          <td className="reason-cell">{renderReasonCell(record.reason, `Reason for ${formatPersonName(record.firstName, record.lastName)}`)}</td>
-                          <td>
-                            <button className="remove-button" onClick={() => requestDeleteRemovedRecord(record)}>
-                              Delete
-                            </button>
-                          </td>
+                  <div className="table-scroll history-table-scroll">
+                    <table className="history-table removed-table">
+                      <colgroup>
+                        <col className="removed-col-date" />
+                        <col className="removed-col-name" />
+                        <col className="removed-col-provider" />
+                        <col className="removed-col-tier" />
+                        <col className="removed-col-status" />
+                        <col className="removed-col-added" />
+                        <col className="removed-col-reason" />
+                        <col className="removed-col-actions" />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th>Removed On</th>
+                          <th>Name</th>
+                          <th>Provider</th>
+                          <th>Tier</th>
+                          <th>Status</th>
+                          <th>Date Added</th>
+                          <th>Reason</th>
+                          <th>Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {filteredRemovedRecords.map(record => (
+                          <tr key={record.id}>
+                            <td>{record.dateRemoved}</td>
+                            <td className="truncate-cell" title={formatPersonName(record.firstName, record.lastName)}>
+                              {formatPersonName(record.firstName, record.lastName)}
+                            </td>
+                            <td className="truncate-cell" title={record.provider}>{record.provider}</td>
+                            <td><span className={`tier-badge tier-${record.tier}`}>Tier {record.tier}</span></td>
+                            <td>{record.status}</td>
+                            <td>{record.dateAdded}</td>
+                            <td className="reason-cell">{renderReasonCell(record.reason, `Reason for ${formatPersonName(record.firstName, record.lastName)}`)}</td>
+                            <td>
+                              <button className="remove-button" onClick={() => requestDeleteRemovedRecord(record)}>
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </>
             )
           )}
         </section>
       )}
+
       {/* ACTION PAGES */}
       {isActionPageOpen && (
         <section className="action-page">
@@ -1764,94 +1893,123 @@ function App(){
                 <div>
                   <h1 className="action-page-title">Add Opening</h1>
                 </div>
-                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
+                <button className="close-action-button" aria-label="Close" onClick={() => setIsActionPageOpen(false)}>×</button>
               </div>
-              <div className="form-section-label">Opening details</div>
-              <div className="form-row" style={{ marginBottom: 16 }}>
-                <label className="field-label-block">
-                  <span className="field-label-text">Provider</span>
-                  <select value={openingProvider} onChange={e => setOpeningProvider(e.target.value)}>
-                    {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-                  </select>
-                </label>
-                <label className="field-label-block opening-date-field">
-                  <span className="field-label-text">Date</span>
-                  <input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} />
-                </label>
-              </div>
-              <div className="form-row" style={{ marginBottom: 28 }}>
-                <label className="field-label-block">
-                  <span className="field-label-text">Start time</span>
-                  <select value={openingStartTime} onChange={e => setOpeningStartTime(e.target.value)}>
-                    {ALL_TIME_OPTIONS.slice(0, -1).map(t => <option key={t} value={t}>{formatDisplayTime(t)}</option>)}
-                  </select>
-                </label>
-                <label className="field-label-block">
-                  <span className="field-label-text">End time</span>
-                  <select value={openingEndTime} onChange={e => setOpeningEndTime(e.target.value)}>
-                    {ALL_TIME_OPTIONS
-                      .filter(t => timeToMinutes(t) > timeToMinutes(openingStartTime))
-                      .map(t => <option key={t} value={t}>{formatDisplayTime(t)}</option>)}
-                  </select>
-                </label>
-                <div className="time-range-preview">
-                  <span className="time-range-val">{formatDisplayTime(openingStartTime)}</span>
-                  <span className="time-range-sep">→</span>
-                  <span className="time-range-val">{formatDisplayTime(openingEndTime)}</span>
-                  <span className="duration-badge">{openingDurationLabel}</span>
+              {/* FIX: surface a clear message when there are no providers */}
+              {hasNoProviders ? (
+                <div className="action-no-providers-notice">
+                  <p>You need at least one provider before adding openings.</p>
+                  <button
+                    className="btn-primary"
+                    onClick={() => setActionMode("EDIT_PROVIDERS")}
+                  >
+                    Add a Provider
+                  </button>
                 </div>
-              </div>
-              <div className="form-submit-row">
-                <button className="btn-secondary" onClick={() => setIsActionPageOpen(false)}>Cancel</button>
-                <button className="btn-primary"   onClick={addOpening}>+ Add Opening</button>
-              </div>
-              <div className="form-divider" />
-              <div className="items-section">
-                <div className="items-section-header">
-                  <div className="form-section-label" style={{ margin: 0, border: "none", padding: 0 }}>
-                    Existing openings
+              ) : (
+                <>
+                  <div className="form-section-label">Opening details</div>
+                  {openingDurationError && <p className="form-error-text">{openingDurationError}</p>}
+                  <div className="form-row" style={{ marginBottom: 16 }}>
+                    <label className="field-label-block">
+                      <span className="field-label-text">Provider</span>
+                      <select value={openingProvider} onChange={e => setOpeningProvider(e.target.value)}>
+                        {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="field-label-block opening-date-field">
+                      <span className="field-label-text">Date</span>
+                      <input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} />
+                    </label>
                   </div>
-                  <span className="items-count">
-                    {openings.length} opening{openings.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                {openings.length === 0 ? (
-                  <p className="empty-message">No openings yet.</p>
-                ) : openings.map(o => {
-                  const color = providers.find(p => p.name === o.provider)?.color ?? "#999";
-                  return (
-                    <div className="item-row" key={o.id}>
-                      <span className="item-dot"  style={{ backgroundColor: color }} />
-                      <span className="item-name">{o.provider}</span>
-                      <span className="item-meta">{formatDisplayDate(o.date)}</span>
-                      <span className="item-meta">{formatTimeRange(o.startTime, o.endTime)}</span>
-                      <button
-                        className="item-edit-btn"
-                        onClick={() => { setEditingOpening({ ...o, _original: o }); setIsActionPageOpen(false); }}
-                      >
-                        Edit
-                      </button>
-                      <button className="item-remove-btn" onClick={() => requestRemoveOpening(o)}>
-                        Remove
-                      </button>
+                  <div className="form-row" style={{ marginBottom: 28 }}>
+                    <label className="field-label-block">
+                      <span className="field-label-text">Start time</span>
+                      <select value={openingStartTime} onChange={e => setOpeningStartTime(e.target.value)}>
+                        {ALL_TIME_OPTIONS.slice(0, -1).map(t => <option key={t} value={t}>{formatDisplayTime(t)}</option>)}
+                      </select>
+                    </label>
+                    <label className="field-label-block">
+                      <span className="field-label-text">End time</span>
+                      <select value={openingEndTime} onChange={e => setOpeningEndTime(e.target.value)}>
+                        {ALL_TIME_OPTIONS
+                          .filter(t => timeToMinutes(t) > timeToMinutes(openingStartTime))
+                          .map(t => <option key={t} value={t}>{formatDisplayTime(t)}</option>)}
+                      </select>
+                    </label>
+                    <div className="time-range-preview">
+                      <span className="time-range-val">{formatDisplayTime(openingStartTime)}</span>
+                      <span className="time-range-sep">→</span>
+                      <span className="time-range-val">{formatDisplayTime(openingEndTime)}</span>
+                      <span className="duration-badge">{openingDurationLabel}</span>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                  <div className="form-submit-row">
+                    <button className="btn-secondary" onClick={() => setIsActionPageOpen(false)}>Cancel</button>
+                    <button
+                      className="btn-primary"
+                      disabled={!canAddOpening}
+                      onClick={addOpening}
+                    >
+                      + Add Opening
+                    </button>
+                  </div>
+                  <div className="form-divider" />
+                  <div className="items-section">
+                    <div className="items-section-header">
+                      <div className="form-section-label" style={{ margin: 0, border: "none", padding: 0 }}>
+                        Existing openings
+                      </div>
+                      <span className="items-count">
+                        {openings.length} opening{openings.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    {openings.length === 0 ? (
+                      <p className="empty-message">No openings yet.</p>
+                    ) : openings.map(o => {
+                      const color = providers.find(p => p.name === o.provider)?.color ?? "#999";
+                      return (
+                        <div className="item-row" key={o.id}>
+                          <span className="item-dot" style={{ backgroundColor: color }} />
+                          <span className="item-name">{o.provider}</span>
+                          <span className="item-meta">{formatDisplayDate(o.date)}</span>
+                          <span className="item-meta">{formatTimeRange(o.startTime, o.endTime)}</span>
+                          <button
+                            className="item-edit-btn"
+                            onClick={() => { setEditingOpening({ ...o, _original: o }); setIsActionPageOpen(false); }}
+                          >
+                            Edit
+                          </button>
+                          <button className="item-remove-btn" onClick={() => requestRemoveOpening(o)}>
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </>
           )}
+
           {/* EDIT PROVIDERS */}
           {actionMode === "EDIT_PROVIDERS" && (
             <>
               <div className="action-header-row">
                 <div><h1 className="action-page-title">Edit Providers</h1></div>
-                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
+                <button className="close-action-button" aria-label="Close" onClick={() => setIsActionPageOpen(false)}>×</button>
               </div>
               <div className="form-section-label">Add provider</div>
               <div className="form-row" style={{ marginBottom: 24, alignItems: "flex-end" }}>
                 <label className="field-label-block field-grow">
                   <span className="field-label-text">Provider name</span>
-                  <input value={providerName} onChange={e => setProviderName(e.target.value)} placeholder="Name" />
+                  <input
+                    value={providerName}
+                    onChange={e => setProviderName(e.target.value)}
+                    placeholder="Name"
+                    // FIX: allow Enter key to submit add-provider form
+                    onKeyDown={e => { if(e.key === "Enter") addProvider(); }}
+                  />
                 </label>
                 <label className="field-label-block">
                   <span className="field-label-text">Calendar color</span>
@@ -1860,7 +2018,7 @@ function App(){
                     <input type="color" value={providerColor} onChange={e => setProviderColor(e.target.value)} style={{ flex: 1 }} />
                   </div>
                 </label>
-                <button className="btn-primary" onClick={addProvider} style={{ alignSelf: "flex-end" }}>
+                <button className="btn-primary" disabled={!providerName.trim()} onClick={addProvider} style={{ alignSelf: "flex-end" }}>
                   + Add Provider
                 </button>
               </div>
@@ -1883,6 +2041,9 @@ function App(){
                     {providers.length} provider{providers.length !== 1 ? "s" : ""}
                   </span>
                 </div>
+                {providers.length === 0 && (
+                  <p className="empty-message">No providers added yet.</p>
+                )}
                 {providers.map(provider => (
                   <div className="item-row" key={provider.name}>
                     <span className="item-dot"         style={{ backgroundColor: provider.color }} />
@@ -1896,6 +2057,7 @@ function App(){
               </div>
             </>
           )}
+
           {/* ADD TO WAITLIST */}
           {actionMode === "WAITLIST_ENTRY" && (
             <>
@@ -1903,8 +2065,20 @@ function App(){
                 <div>
                   <h1 className="action-page-title">Add to Waitlist</h1>
                 </div>
-                <button className="close-action-button" onClick={() => setIsActionPageOpen(false)}>x</button>
+                <button className="close-action-button" aria-label="Close" onClick={() => setIsActionPageOpen(false)}>×</button>
               </div>
+              {/* FIX: warn when no providers exist */}
+              {hasNoProviders && (
+                <div className="action-no-providers-notice">
+                  <p>You need at least one provider before adding waitlist entries.</p>
+                  <button
+                    className="btn-primary"
+                    onClick={() => { setActionMode("EDIT_PROVIDERS"); }}
+                  >
+                    Add a Provider
+                  </button>
+                </div>
+              )}
               <div className="form-section-label">Patient</div>
               <div className="form-row" style={{ marginBottom: 16 }}>
                 <label className="field-label-block opening-date-field">
@@ -1931,7 +2105,7 @@ function App(){
               <div className="form-row" style={{ marginBottom: 24 }}>
                 <label className="field-label-block field-grow">
                   <span className="field-label-text">Provider</span>
-                  <select value={waitlistProvider} onChange={e => setWaitlistProvider(e.target.value)}>
+                  <select value={waitlistProvider} onChange={e => setWaitlistProvider(e.target.value)} disabled={hasNoProviders}>
                     {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
                   </select>
                 </label>
@@ -1976,6 +2150,7 @@ function App(){
                   <span className="field-label-text">Available times</span>
                   <button className="mini-add-button" onClick={addWaitlistAvailableTimeRange}>+ Add time range</button>
                 </div>
+                {waitlistAvailabilityError && <p className="form-error-text compact-error">{waitlistAvailabilityError}</p>}
                 {waitlistAvailableTimeRanges.length === 0 ? (
                   <p className="field-hint">No time ranges inputted to indicate any time.</p>
                 ) : (
@@ -2002,12 +2177,19 @@ function App(){
               </div>
               <div className="form-submit-row">
                 <button className="btn-secondary" onClick={() => setIsActionPageOpen(false)}>Cancel</button>
-                <button className="btn-primary"   onClick={addWaitlistEntry}>+ Add to Waitlist</button>
+                <button
+                  className="btn-primary"
+                  disabled={!canAddWaitlistEntry}
+                  onClick={addWaitlistEntry}
+                >
+                  + Add to Waitlist
+                </button>
               </div>
             </>
           )}
         </section>
       )}
+
       {/* IMPORT / EXPORT MODAL */}
       {isImportExportModalOpen && (
         <div className="modal-backdrop" onClick={closeImportExportModal}>
@@ -2017,7 +2199,7 @@ function App(){
                 <h2 className="modal-title">Import / Export Waitlist</h2>
                 <p className="modal-subtitle">Expected columns: Date added, Name, Provider, Tier, Reason, Dates, Times.</p>
               </div>
-              <button className="close-action-button" onClick={closeImportExportModal}>x</button>
+              <button className="close-action-button" aria-label="Close" onClick={closeImportExportModal}>×</button>
             </div>
             <input
               ref={importFileInputRef}
@@ -2048,7 +2230,13 @@ function App(){
                   <h3>Export active waitlist</h3>
                   <p>Downloads the current waitlisted patients.</p>
                 </div>
-                <button className="btn-primary" onClick={exportWaitlistToExcel}>
+                {/* FIX: disable export when there are no waitlisted patients */}
+                <button
+                  className="btn-primary"
+                  disabled={waitlistedCount === 0}
+                  onClick={exportWaitlistToExcel}
+                  title={waitlistedCount === 0 ? "No patients on the active waitlist" : undefined}
+                >
                   Export Excel
                 </button>
               </div>
@@ -2110,14 +2298,14 @@ function App(){
           </div>
         </div>
       )}
+
       {/* SETTINGS MODAL */}
       {isSettingsModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsSettingsModalOpen(false)}>
           <div className="modal-box settings-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Settings</h2>
-              <button className="close-action-button" onClick={() => setIsSettingsModalOpen(false)}>x
-              </button>
+              <button className="close-action-button" aria-label="Close" onClick={() => setIsSettingsModalOpen(false)}>×</button>
             </div>
             <div className="settings-stack">
               <section className="settings-section">
@@ -2197,13 +2385,14 @@ function App(){
           </div>
         </div>
       )}
+
       {/* CONFIRM REMOVAL MODAL */}
       {pendingRemoval && (
         <div className="modal-backdrop" onClick={() => setPendingRemoval(null)}>
           <div className="modal-box confirm-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{pendingRemoval.title}</h2>
-              <button className="close-action-button" onClick={() => setPendingRemoval(null)}>x</button>
+              <button className="close-action-button" aria-label="Close" onClick={() => setPendingRemoval(null)}>×</button>
             </div>
             <p className="confirm-message">{pendingRemoval.message}</p>
             <div className="modal-footer">
@@ -2213,12 +2402,13 @@ function App(){
           </div>
         </div>
       )}
+
       {reasonPreview && (
         <div className="modal-backdrop" onClick={() => setReasonPreview(null)}>
           <div className="modal-box reason-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{reasonPreview.title}</h2>
-              <button className="close-action-button" onClick={() => setReasonPreview(null)}>x</button>
+              <button className="close-action-button" aria-label="Close" onClick={() => setReasonPreview(null)}>×</button>
             </div>
             <div className="reason-modal-text">{reasonPreview.text}</div>
             <div className="modal-footer">
@@ -2227,14 +2417,16 @@ function App(){
           </div>
         </div>
       )}
+
       {/* EDIT OPENING MODAL */}
       {editingOpening && (
         <div className="modal-backdrop" onClick={() => setEditingOpening(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Edit Opening</h2>
-              <button className="close-action-button" onClick={() => setEditingOpening(null)}>x</button>
+              <button className="close-action-button" aria-label="Close" onClick={() => setEditingOpening(null)}>×</button>
             </div>
+            {editingOpeningDurationError && <p className="form-error-text">{editingOpeningDurationError}</p>}
             <div className="form-row" style={{ marginBottom: 14 }}>
               <label className="field-label-block field-grow">
                 <span className="field-label-text">Provider</span>
@@ -2278,18 +2470,21 @@ function App(){
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setEditingOpening(null)}>Cancel</button>
-              <button className="btn-primary"   onClick={saveEditingOpening}>Save Changes</button>
+              <button className="btn-primary" disabled={Boolean(editingOpeningDurationError)} onClick={saveEditingOpening}>
+                Save Changes
+              </button>
             </div>
           </div>
         </div>
       )}
+
       {/* EDIT ENTRY MODAL */}
       {editingEntry && (
         <div className="modal-backdrop" onClick={() => setEditingEntry(null)}>
           <div className="modal-box modal-wide" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Edit Waitlist Entry</h2>
-              <button className="close-action-button" onClick={() => setEditingEntry(null)}>x</button>
+              <button className="close-action-button" aria-label="Close" onClick={() => setEditingEntry(null)}>×</button>
             </div>
             <div className="form-section-label">Patient</div>
             <div className="form-row" style={{ marginBottom: 14 }}>
@@ -2328,7 +2523,6 @@ function App(){
               </label>
               <label className="field-label-block field-grow">
                 <span className="field-label-text">Reason</span>
-                {/* NOTE: Selecting a new tier will overwrite a custom reason with the tier default. */}
                 <input
                   value={editingEntry.reason}
                   onChange={e => setEditingEntry({ ...editingEntry, reason: e.target.value })}
@@ -2375,6 +2569,7 @@ function App(){
                 <span className="field-label-text">Available times</span>
                 <button className="mini-add-button" onClick={addEditingEntryTimeRange}>+ Add time range</button>
               </div>
+              {editingEntryAvailabilityError && <p className="form-error-text compact-error">{editingEntryAvailabilityError}</p>}
               {editingEntry.availableTimes.length === 0 ? (
                 <p className="field-hint">No time ranges selected — any time.</p>
               ) : (
@@ -2404,18 +2599,25 @@ function App(){
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setEditingEntry(null)}>Cancel</button>
-              <button className="btn-primary"   onClick={saveEditingEntry}>Save Changes</button>
+              <button
+                className="btn-primary"
+                disabled={Boolean(editingEntryAvailabilityError)}
+                onClick={saveEditingEntry}
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>
       )}
+
       {/* EDIT PROVIDER MODAL */}
       {editingProvider && (
         <div className="modal-backdrop" onClick={() => setEditingProvider(null)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Edit Provider</h2>
-              <button className="close-action-button" onClick={() => setEditingProvider(null)}>×</button>
+              <button className="close-action-button" aria-label="Close" onClick={() => setEditingProvider(null)}>×</button>
             </div>
             <div className="form-row" style={{ marginBottom: 14 }}>
               <label className="field-label-block field-grow">
@@ -2423,6 +2625,8 @@ function App(){
                 <input
                   value={editingProvider.name}
                   onChange={e => setEditingProvider({ ...editingProvider, name: e.target.value })}
+                  // FIX: Enter key submits the edit
+                  onKeyDown={e => { if(e.key === "Enter") saveEditingProvider(); }}
                 />
               </label>
             </div>
@@ -2452,7 +2656,13 @@ function App(){
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setEditingProvider(null)}>Cancel</button>
-              <button className="btn-primary"   onClick={saveEditingProvider}>Save Changes</button>
+              <button
+                className="btn-primary"
+                disabled={!editingProvider.name.trim()}
+                onClick={saveEditingProvider}
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>
@@ -2696,35 +2906,32 @@ function parseImportedDayCode(token: string): DayCode | null {
 }
 
 function parseImportedTimeRanges(value: string): { ranges: string[]; error?: string } {
-const text = value.trim();
-if(!text || /^any$/i.test(text)) return { ranges: [] };
-const ranges: string[] = [];
-const invalid: string[] = [];
-// Split on commas or semicolons only; avoid splitting on "/" which can appear in time notations
-const pieces = text
-  .replace(/[–—]/g, "-")
-  .replace(/\bto\b/gi, "-")
-  .split(/[,;]+/)
-  .map(piece => piece.trim())
-  .filter(Boolean);
-for (const piece of pieces){
-  const parsed = parseSingleImportedTimeRange(piece);
-  if(!parsed){
-    invalid.push(piece);
-    continue;
+  const text = value.trim();
+  if(!text || /^any$/i.test(text)) return { ranges: [] };
+  const ranges: string[] = [];
+  const invalid: string[] = [];
+  const pieces = text
+    .replace(/[–—]/g, "-")
+    .replace(/\bto\b/gi, "-")
+    .split(/[,;]+/)
+    .map(piece => piece.trim())
+    .filter(Boolean);
+  for (const piece of pieces){
+    const parsed = parseSingleImportedTimeRange(piece);
+    if(!parsed){
+      invalid.push(piece);
+      continue;
+    }
+    ranges.push(`${minutesToTimeString(parsed.start)}-${minutesToTimeString(parsed.end)}`);
   }
-  ranges.push(`${minutesToTimeString(parsed.start)}-${minutesToTimeString(parsed.end)}`);
-}
-const normalizedRanges = normalizeSerializedTimeRanges(ranges);
-return invalid.length > 0
-  ? { ranges: normalizedRanges, error: `Invalid time range: ${invalid.join(", ")}.` }
-  : { ranges: normalizedRanges };
+  const normalizedRanges = normalizeSerializedTimeRanges(ranges);
+  return invalid.length > 0
+    ? { ranges: normalizedRanges, error: `Invalid time range: ${invalid.join(", ")}.` }
+    : { ranges: normalizedRanges };
 }
 
 function parseSingleImportedTimeRange(value: string): TimeWindow | null {
   const cleanValue = value.trim();
-  // Single time input means "from that time until close".
-  // Example: "3pm" → 3:00 PM–6:00 PM.
   if (!cleanValue.includes("-")) {
     const startClock = parseImportedClock(cleanValue);
     if (!startClock) return null;
@@ -2734,7 +2941,7 @@ function parseSingleImportedTimeRange(value: string): TimeWindow | null {
       start < CAL_START_MIN ||
       start >= CAL_END_MIN ||
       end <= start ||
-      !hasOneHourSlot(start, end)
+      !hasMinimumSlot(start, end, BASE_APPOINTMENT_MINUTES)
     ) {
       return null;
     }
@@ -2747,7 +2954,6 @@ function parseSingleImportedTimeRange(value: string): TimeWindow | null {
   if (!startClock || !endClock) return null;
   let startSuffix = startClock.suffix;
   let endSuffix = endClock.suffix;
-  // Infer missing suffix on the start side when only end has one.
   if (!startSuffix && endSuffix) {
     if (endSuffix === "pm") {
       startSuffix =
@@ -2760,17 +2966,14 @@ function parseSingleImportedTimeRange(value: string): TimeWindow | null {
       startSuffix = "am";
     }
   }
-  // Infer missing suffix on the end side when only start has one.
   if (startSuffix && !endSuffix) {
     if (startSuffix === "am" && endClock.hour < startClock.hour) {
-      // Example: "9am-5" means 9:00 AM–5:00 PM.
       endSuffix = "pm";
     } else if (
       startSuffix === "am" &&
       endClock.hour >= 1 &&
       endClock.hour <= 7
     ) {
-      // Hours 1–7 with no suffix are treated as PM in this app.
       endSuffix = "pm";
     } else {
       endSuffix = startSuffix;
@@ -2778,8 +2981,6 @@ function parseSingleImportedTimeRange(value: string): TimeWindow | null {
   }
   const start = importedClockToMinutes({ ...startClock, suffix: startSuffix });
   let end = importedClockToMinutes({ ...endClock, suffix: endSuffix });
-  // Last-resort flip: if end still lands ≤ start and the end suffix was inferred,
-  // try flipping it to PM.
   if (end <= start && !endClock.suffix) {
     const endAsPm = importedClockToMinutes({ ...endClock, suffix: "pm" });
     if (endAsPm > start) end = endAsPm;
@@ -2788,7 +2989,7 @@ function parseSingleImportedTimeRange(value: string): TimeWindow | null {
     start < CAL_START_MIN ||
     end > CAL_END_MIN ||
     end <= start ||
-    !hasOneHourSlot(start, end)
+    !hasMinimumSlot(start, end, BASE_APPOINTMENT_MINUTES)
   ) {
     return null;
   }
@@ -2840,7 +3041,6 @@ function formatClockForExport(minutes: number): string {
 // PURE HELPER FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Date utilities 
 function parseLocalDate(dateString: string): Date {
   const [year, month, day] = dateString.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -2858,22 +3058,20 @@ function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-// Returns the Monday of the current week. If today is Sunday/Saturday, returns next Monday.
 function getCurrentWeekStartDate(): string {
   const date = startOfLocalDay(new Date());
-  const day  = date.getDay(); // 0=Sun, 1=Mon, …, 6=Sat
+  const day  = date.getDay();
   let daysToMonday = day === 0 ? 1 : 1 - day;
   if(day === 6) daysToMonday = 2;
   date.setDate(date.getDate() + daysToMonday);
   return toDateInputValue(date);
 }
 
-// Returns today if it's a weekday, or the following Monday for weekends.
 function getDefaultOpeningDate(): string {
   const date = startOfLocalDay(new Date());
   const day  = date.getDay();
-  if(day === 6) date.setDate(date.getDate() + 2); // Saturday → Monday
-  if(day === 0) date.setDate(date.getDate() + 1); // Sunday  → Monday
+  if(day === 6) date.setDate(date.getDate() + 2);
+  if(day === 0) date.setDate(date.getDate() + 1);
   return toDateInputValue(date);
 }
 
@@ -2883,8 +3081,6 @@ function moveDateByDays(dateString: string, days: number): string {
   return toDateInputValue(date);
 }
 
-
-// Returns true only if the date is strictly more than RETENTION_DAYS old (i.e. the cutoff day itself is NOT purged).
 function isDateOlderThanRetentionDays(dateString: string, today: Date): boolean {
   const cutoff = startOfLocalDay(today);
   cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
@@ -2910,9 +3106,6 @@ function formatDisplayDate(dateString: string): string {
   });
 }
 
-//  Day code utilities 
-
-// Returns the DayCode (M/Tu/W/Th/F) for a given YYYY-MM-DD date.
 function getDayCodeFromDate(dateString: string): DayCode | null {
   const day = parseLocalDate(dateString).getDay();
   if(day === 1) return "M";
@@ -2920,26 +3113,17 @@ function getDayCodeFromDate(dateString: string): DayCode | null {
   if(day === 3) return "W";
   if(day === 4) return "Th";
   if(day === 5) return "F";
-  return null; // 0 = Sunday, 6 = Saturday
+  return null;
 }
 
-// Time conversion utilities 
-//
-// Times are stored as "H:MM" strings in 12-hour format without AM/PM.
-// The calendar range is 8 AM – 6 PM (480–1080 minutes from midnight).
-// Hours 1–7 are treated as PM (1:00 → 13:00, …, 7:00 → 19:00).
-// Hours 8–12 are treated as AM/noon as-is.
-//
 function timeToMinutes(time: string): number {
   const [hourStr, minuteStr] = time.split(":");
   let hour = Number(hourStr);
   const minute = Number(minuteStr ?? "0");
-  // Ambiguous hours 1–7 are in the PM range (1 PM – 7 PM).
   if(hour >= 1 && hour <= 7) hour += 12;
   return hour * 60 + minute;
 }
 
-// Converts absolute minutes from midnight back to "H:MM" storage format.
 function minutesToTimeString(totalMinutes: number): string {
   const hour = Math.floor(totalMinutes / 60);
   const min = totalMinutes % 60;
@@ -2947,7 +3131,6 @@ function minutesToTimeString(totalMinutes: number): string {
   return `${disp}:${String(min).padStart(2, "0")}`;
 }
 
-// Formats "H:MM" storage value to "H:MM AM/PM" for display.
 function formatDisplayTime(time: string): string {
   const totalMinutes = timeToMinutes(time);
   const hour24 = Math.floor(totalMinutes / 60);
@@ -2965,8 +3148,6 @@ function snapToInterval(minutes: number, interval: number): number {
   return Math.round(minutes / interval) * interval;
 }
 
-// Calendar positioning helpers 
-
 function getOpeningTopPct(startTime: string): number {
   return ((timeToMinutes(startTime) - CAL_START_MIN) / CAL_SPAN) * 100;
 }
@@ -2975,39 +3156,68 @@ function getOpeningHeightPct(startTime: string, endTime: string): number {
   return ((timeToMinutes(endTime) - timeToMinutes(startTime)) / CAL_SPAN) * 100;
 }
 
-// Time range / availability helpers 
+function getOpeningDurationError(startTime: string, endTime: string): string {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  if(end <= start) return "End time must be after start time.";
+  if(end - start < BASE_APPOINTMENT_MINUTES){
+    return `Openings must be at least ${BASE_APPOINTMENT_MINUTES} minutes.`;
+  }
+  return "";
+}
 
-// Parses a serialized "H:MM-H:MM" range into {start, end} minutes.
+function getAvailabilityRangeError(ranges: TimeRangeDraft[]): string {
+  const invalidRange = ranges.find(range =>
+    timeToMinutes(range.endTime) <= timeToMinutes(range.startTime) ||
+    timeToMinutes(range.endTime) - timeToMinutes(range.startTime) < BASE_APPOINTMENT_MINUTES,
+  );
+  return invalidRange
+    ? `Patient availability time ranges must be at least ${BASE_APPOINTMENT_MINUTES} minutes.`
+    : "";
+}
+
 function parseTimeRange(range: string): { start: number; end: number } {
   const [start, end] = range.split("-").map(part => part.trim());
   return { start: timeToMinutes(start), end: timeToMinutes(end) };
 }
 
-function hasOneHourSlot(start: number, end: number): boolean {
-  return end - start >= 60;
+function hasMinimumSlot(start: number, end: number, minimumMinutes: number): boolean {
+  return end - start >= minimumMinutes;
 }
 
-function getOverlapWindow(aStart: number, aEnd: number, bStart: number, bEnd: number): TimeWindow | null {
+function isSurgeryOpening(opening: Opening): boolean {
+  return Boolean((opening as Opening & { isSurgery?: boolean }).isSurgery);
+}
+
+function getMinimumAppointmentMinutes(opening: Opening): number {
+  return isSurgeryOpening(opening) ? SURGERY_APPOINTMENT_MINUTES : BASE_APPOINTMENT_MINUTES;
+}
+
+function getOverlapWindow(
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+  minimumMinutes: number,
+): TimeWindow | null {
   const start = Math.max(aStart, bStart);
   const end = Math.min(aEnd, bEnd);
-  return hasOneHourSlot(start, end) ? { start, end } : null;
+  return hasMinimumSlot(start, end, minimumMinutes) ? { start, end } : null;
 }
 
-
-// Returns all minute-windows where the entry's availability overlaps the opening, each at least 60 minutes long. ----------------------------------------
 function getEligibleScheduleWindows(entry: WaitlistEntry, opening: Opening): TimeWindow[] {
   const isFlexibleUrgent = entry.tier === 1 && entry.availableDays.length === 0 && entry.availableTimes.length === 0;
   const dayMatches = isFlexibleUrgent || entry.availableDays.length === 0 || entry.availableDays.includes(opening.day);
   if(!dayMatches) return [];
   const openingStart = timeToMinutes(opening.startTime);
   const openingEnd = timeToMinutes(opening.endTime);
-  // No time restrictions — the whole opening is the window.
+  const minimumMinutes = getMinimumAppointmentMinutes(opening);
   if(entry.availableTimes.length === 0){
-    return hasOneHourSlot(openingStart, openingEnd) ? [{ start: openingStart, end: openingEnd }] : [];
+    return hasMinimumSlot(openingStart, openingEnd, minimumMinutes) ? [{ start: openingStart, end: openingEnd }] : [];
   }
   return entry.availableTimes
     .map(parseTimeRange)
-    .map(r => getOverlapWindow(r.start, r.end, openingStart, openingEnd))
+    .map(r => getOverlapWindow(r.start, r.end, openingStart, openingEnd, minimumMinutes))
     .filter((w): w is TimeWindow => w !== null);
 }
 
@@ -3029,86 +3239,80 @@ function formatAvailability(days: DayCode[], times: string[]): string {
   return `${days.length > 0 ? days.join(", ") : "Any"}; ${formatAvailableTimes(times)}`;
 }
 
-// Schedule selection helpers 
-// Generates all valid start-time options (every SNAP minutes) across eligible windows. 
-function getScheduleStartOptions(windows: TimeWindow[]): string[] {
+function getScheduleStartOptions(windows: TimeWindow[], minimumMinutes: number): string[] {
   return uniqueSortedTimes(windows.flatMap(w => {
     const options: string[] = [];
-    for (let min = w.start; min <= w.end - 60; min += SNAP){
+    for (let min = w.start; min <= w.end - minimumMinutes; min += SNAP){
       options.push(minutesToTimeString(min));
     }
     return options;
   }));
 }
 
-// Generates all valid end-time options for a given start time.
-function getScheduleEndOptions(windows: TimeWindow[], startTime: string): string[] {
+function getScheduleEndOptions(windows: TimeWindow[], startTime: string, minimumMinutes: number): string[] {
   const start = timeToMinutes(startTime);
   return uniqueSortedTimes(windows.flatMap(w => {
-    if(start < w.start || start + 60 > w.end) return [];
+    if(start < w.start || start + minimumMinutes > w.end) return [];
     const options: string[] = [];
-    for (let min = start + 60; min <= w.end; min += SNAP){
+    for (let min = start + minimumMinutes; min <= w.end; min += SNAP){
       options.push(minutesToTimeString(min));
     }
     return options;
   }));
 }
 
-function getDefaultScheduleSelection(windows: TimeWindow[]): ScheduleSelection {
-  const first = windows[0] ?? { start: CAL_START_MIN, end: CAL_START_MIN + 60 };
+function getDefaultScheduleSelection(windows: TimeWindow[], minimumMinutes = BASE_APPOINTMENT_MINUTES): ScheduleSelection {
+  const first = windows[0] ?? { start: CAL_START_MIN, end: CAL_START_MIN + minimumMinutes };
   return {
     startTime: minutesToTimeString(first.start),
-    endTime: minutesToTimeString(Math.min(first.start + 60, first.end)),
+    endTime: minutesToTimeString(Math.min(first.start + minimumMinutes, first.end)),
   };
 }
 
-// Normalizes a selection so it stays within valid option sets after either field changes.
 function normalizeScheduleSelection(
   selection: ScheduleSelection,
   changedField: "startTime" | "endTime",
   windows: TimeWindow[],
+  minimumMinutes: number,
 ): ScheduleSelection {
-  if(windows.length === 0) return getDefaultScheduleSelection(windows);
-  const startOptions = getScheduleStartOptions(windows);
-  if(startOptions.length === 0) return getDefaultScheduleSelection(windows);
+  if(windows.length === 0) return getDefaultScheduleSelection(windows, minimumMinutes);
+  const startOptions = getScheduleStartOptions(windows, minimumMinutes);
+  if(startOptions.length === 0) return getDefaultScheduleSelection(windows, minimumMinutes);
   let startTime = selection.startTime;
   if(!startOptions.includes(startTime)) startTime = startOptions[0];
-  let endOptions = getScheduleEndOptions(windows, startTime);
+  let endOptions = getScheduleEndOptions(windows, startTime, minimumMinutes);
   if(endOptions.length === 0){
-    // Try the first valid start option instead
     startTime  = startOptions[0];
-    endOptions = getScheduleEndOptions(windows, startTime);
-    // If still empty (shouldn't happen with valid windows), fall back to default
-    if(endOptions.length === 0) return getDefaultScheduleSelection(windows);
+    endOptions = getScheduleEndOptions(windows, startTime, minimumMinutes);
+    if(endOptions.length === 0) return getDefaultScheduleSelection(windows, minimumMinutes);
   }
   let endTime = selection.endTime;
-  const endTooEarly = timeToMinutes(endTime) - timeToMinutes(startTime) < 60;
+  const endTooEarly = timeToMinutes(endTime) - timeToMinutes(startTime) < minimumMinutes;
   if(!endOptions.includes(endTime) || (changedField === "startTime" && endTooEarly)){
     endTime = endOptions[0];
   }
   return { startTime, endTime };
 }
 
-// Returns the user's saved selection for an entry, validated against current windows. 
 function getResolvedScheduleSelection(
   entry: WaitlistEntry,
   opening: Opening,
-  saved?: ScheduleSelection,
+  saved: ScheduleSelection | undefined,
 ): ScheduleSelection {
+  const minimumMinutes = getMinimumAppointmentMinutes(opening);
   const windows = getEligibleScheduleWindows(entry, opening);
   return normalizeScheduleSelection(
-    saved ?? getDefaultScheduleSelection(windows),
+    saved ?? getDefaultScheduleSelection(windows, minimumMinutes),
     "endTime",
     windows,
+    minimumMinutes,
   );
 }
 
-// Time range draft helpers 
 function getNextTimeRangeId(ranges: TimeRangeDraft[]): number {
   return ranges.length === 0 ? 1 : Math.max(...ranges.map(r => r.id)) + 1;
 }
 
-// Parses a serialized "H:MM-H:MM" string into a TimeRangeDraft.
 function rangeToDraft(range: string, fallbackId = 0): TimeRangeDraft {
   const parsed = parseTimeRange(range);
   return {
@@ -3118,17 +3322,16 @@ function rangeToDraft(range: string, fallbackId = 0): TimeRangeDraft {
   };
 }
 
-// Ensures the draft's start/end are at least 60 minutes apart, clamped to calendar bounds.
 function normalizeDraftTimeRange(range: TimeRangeDraft, changedField: "startTime" | "endTime"): TimeRangeDraft {
   let start = timeToMinutes(range.startTime);
   let end = timeToMinutes(range.endTime);
-  if(end - start < 60){
+  if(end - start < BASE_APPOINTMENT_MINUTES){
     if(changedField === "startTime"){
-      end = Math.min(CAL_END_MIN, start + 60);
-      if(end - start < 60) start = end - 60;
+      end = Math.min(CAL_END_MIN, start + BASE_APPOINTMENT_MINUTES);
+      if(end - start < BASE_APPOINTMENT_MINUTES) start = end - BASE_APPOINTMENT_MINUTES;
     } else {
-      start = Math.max(CAL_START_MIN, end - 60);
-      if(end - start < 60) end = start + 60;
+      start = Math.max(CAL_START_MIN, end - BASE_APPOINTMENT_MINUTES);
+      if(end - start < BASE_APPOINTMENT_MINUTES) end = start + BASE_APPOINTMENT_MINUTES;
     }
   }
   return { ...range, startTime: minutesToTimeString(start), endTime: minutesToTimeString(end) };
@@ -3137,7 +3340,7 @@ function normalizeDraftTimeRange(range: TimeRangeDraft, changedField: "startTime
 function normalizeAndMergeTimeRangeDrafts(ranges: TimeRangeDraft[]): TimeRangeDraft[] {
   const sortedRanges = ranges
     .map(r => normalizeDraftTimeRange(r, "endTime"))
-    .filter(r => hasOneHourSlot(timeToMinutes(r.startTime), timeToMinutes(r.endTime)))
+    .filter(r => hasMinimumSlot(timeToMinutes(r.startTime), timeToMinutes(r.endTime), BASE_APPOINTMENT_MINUTES))
     .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
   const merged: TimeRangeDraft[] = [];
@@ -3166,10 +3369,10 @@ function normalizeSerializedTimeRanges(ranges: string[]): string[] {
 function getNextAvailableTimeRangeDraft(ranges: TimeRangeDraft[]): TimeRangeDraft | null {
   const merged = normalizeAndMergeTimeRangeDrafts(ranges);
   const nextId = getNextTimeRangeId(ranges);
-  const preferredStarts = [9 * 60, ...buildMinuteRange(CAL_START_MIN, CAL_END_MIN - 60, 60)];
+  const preferredStarts = [9 * 60, ...buildMinuteRange(CAL_START_MIN, CAL_END_MIN - BASE_APPOINTMENT_MINUTES, 60)];
   const uniqueStarts = Array.from(new Set(preferredStarts));
   for(const start of uniqueStarts){
-    const end = start + 60;
+    const end = start + BASE_APPOINTMENT_MINUTES;
     const overlapsExisting = merged.some(range => {
       const rangeStart = timeToMinutes(range.startTime);
       const rangeEnd = timeToMinutes(range.endTime);
@@ -3192,14 +3395,11 @@ function buildMinuteRange(startMin: number, endMin: number, stepMin: number): nu
   return values;
 }
 
-// Converts draft ranges back to serialized "H:MM-H:MM" strings, filtering invalid entries.
 function serializeTimeRangeDrafts(ranges: TimeRangeDraft[]): string[] {
   return normalizeAndMergeTimeRangeDrafts(ranges)
     .map(r => `${r.startTime}-${r.endTime}`);
 }
 
-// Opening data helpers 
-// Removes the appointment slot from the opening, splitting it into up to two pieces if the appointment is in the middle.
 function splitOpeningForAppointment(
   openings: Opening[],
   openingId: number,
@@ -3208,16 +3408,14 @@ function splitOpeningForAppointment(
 ): Opening[] {
   const apptStart = timeToMinutes(appointmentStartTime);
   const apptEnd = timeToMinutes(appointmentEndTime);
-  // Compute the next available ID from the full list before any modifications
   let nextId = getNextId(openings);
   const split = openings.flatMap(opening => {
     if(opening.id !== openingId) return [opening];
     const oStart = timeToMinutes(opening.startTime);
     const oEnd = timeToMinutes(opening.endTime);
-    if(apptStart <= oStart && apptEnd >= oEnd) return []; // appointment covers entire opening
+    if(apptStart <= oStart && apptEnd >= oEnd) return [];
     if(apptStart <= oStart) return [{ ...opening, startTime: minutesToTimeString(apptEnd) }];
     if(apptEnd >= oEnd) return [{ ...opening, endTime: minutesToTimeString(apptStart) }];
-    // Appointment is in the middle — split into two.
     return [
       { ...opening, endTime: minutesToTimeString(apptStart) },
       { ...opening, id: nextId++, startTime: minutesToTimeString(apptEnd) },
@@ -3226,7 +3424,6 @@ function splitOpeningForAppointment(
   return mergeSameProviderOpenings(split);
 }
 
-// Merges adjacent or overlapping openings from the same provider on the same day.
 function mergeSameProviderOpenings(openings: Opening[], preferredId?: number | null): Opening[] {
   const groups = new Map<string, Opening[]>();
   for (const opening of openings){
@@ -3251,7 +3448,6 @@ function mergeSameProviderOpenings(openings: Opening[], preferredId?: number | n
       const openingStart = timeToMinutes(opening.startTime);
       const openingEnd = timeToMinutes(opening.endTime);
       if(openingStart <= currentEnd){
-        // Overlapping or adjacent — extend the current block.
         current.endTime = minutesToTimeString(Math.max(currentEnd, openingEnd));
         currentIds.add(opening.id);
         continue;
@@ -3275,17 +3471,7 @@ function mergeSameProviderOpenings(openings: Opening[], preferredId?: number | n
   });
 }
 
-// Calendar segment rendering helpers 
-/**
- * Builds the list of OpeningSegments for one day column.
- *
- * Strategy: collect all unique time breakpoints from that day's openings, then
- * for each breakpoint interval determine which openings are active. Active openings
- * share the column width equally. Adjacent same-opening segments are merged back
- * together, then labelled and connected (first/last piece flags).
- */
 function buildOpeningSegments(dayOpenings: Opening[]): OpeningSegment[] {
-  // Collect all start/end times as breakpoints.
   const points = new Set<number>();
   dayOpenings.forEach(o => { points.add(timeToMinutes(o.startTime)); points.add(timeToMinutes(o.endTime)); });
   const breakpoints = [...points].sort((a, b) => a - b);
@@ -3293,7 +3479,6 @@ function buildOpeningSegments(dayOpenings: Opening[]): OpeningSegment[] {
   for (let i = 0; i < breakpoints.length - 1; i++){
     const segStart = breakpoints[i];
     const segEnd = breakpoints[i + 1];
-    // Which openings are active during this interval?
     const activeOpenings = dayOpenings
       .filter(o => timeToMinutes(o.startTime) < segEnd && timeToMinutes(o.endTime) > segStart)
       .sort((a, b) => {
@@ -3319,7 +3504,6 @@ function buildOpeningSegments(dayOpenings: Opening[]): OpeningSegment[] {
   return labelAndConnectOpeningSegments(mergeAdjacentOpeningSegments(rawSegments));
 }
 
-// Merges consecutive segments for the same opening when they share column position.
 function mergeAdjacentOpeningSegments(segments: OpeningSegment[]): OpeningSegment[] {
   const merged: OpeningSegment[] = [];
   for (const seg of segments){
@@ -3331,7 +3515,7 @@ function mergeAdjacentOpeningSegments(segments: OpeningSegment[]): OpeningSegmen
       prev.left === seg.left &&
       prev.width === seg.width
     ){
-      prev.endTime = seg.endTime; // extend
+      prev.endTime = seg.endTime;
     } else {
       merged.push({ ...seg });
     }
@@ -3339,13 +3523,11 @@ function mergeAdjacentOpeningSegments(segments: OpeningSegment[]): OpeningSegmen
   return merged;
 }
 
-// Marks each segment with showLabel, isFirstPiece, isLastPiece for rendering.
 function labelAndConnectOpeningSegments(segments: OpeningSegment[]): OpeningSegment[] {
   return segments.map(segment => {
     const same = segments.filter(s => s.opening.id === segment.opening.id);
     const first = same.reduce((b, c) => timeToMinutes(c.startTime) < timeToMinutes(b.startTime) ? c : b);
     const last = same.reduce((b, c) => timeToMinutes(c.endTime) > timeToMinutes(b.endTime) ? c : b);
-    // Label goes on the widest (or longest) segment.
     const label = same.reduce((b, c) => {
       if(c.widthPercent > b.widthPercent) return c;
       if(c.widthPercent === b.widthPercent){
@@ -3364,7 +3546,6 @@ function labelAndConnectOpeningSegments(segments: OpeningSegment[]): OpeningSegm
   });
 }
 
-// Search helpers 
 function normalizeSearchQuery(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -3437,8 +3618,6 @@ function removedRecordMatchesSearch(record: RemovedRecord, query: string): boole
   ]);
 }
 
-// General utilities 
-// Builds an array of "H:MM" time strings from startMin to endMin in stepMin increments.
 function buildTimeOptions(startMin: number, endMin: number, stepMin: number): string[] {
   const options: string[] = [];
   for (let min = startMin; min <= endMin; min += stepMin){
@@ -3451,13 +3630,11 @@ function uniqueSortedTimes(times: string[]): string[] {
   return [...new Set(times)].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
 }
 
-// Returns a new array only if the filter actually removed items, avoiding spurious re-renders.
 function filterWithoutStateChange<T>(items: T[], keep: (item: T) => boolean): T[] {
   const filtered = items.filter(keep);
   return filtered.length === items.length ? items : filtered;
 }
 
-// Returns the next available integer ID, safe for any array size.
 function getNextId(items: { id: number }[]): number {
   if(items.length === 0) return 1;
   return items.reduce((max, item) => item.id > max ? item.id : max, 0) + 1;
