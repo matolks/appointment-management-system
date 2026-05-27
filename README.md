@@ -2,18 +2,19 @@
 
 Appointment Manager is a desktop application for filling new appointment openings with eligible patients from a waitlist.
 
+The app is designed for local use in a medical office workflow. It stores appointment openings, providers, waitlist patients, scheduled records, and removed records on the user's computer.
+
 ## Calendar
 
 Providers are displayed on the left, and their openings are displayed on the calendar in the center. Clicking an opening shows eligible waitlist patients who can fill that appointment time.
 
 ### Features
 
-- Clear/reset the database
-- Import and export waitlist data using Excel sheets
-- Export, import, restore, and manually clean up local database backups
 - Add new openings
 - Edit, move, resize, or remove current openings
 - Warn when adding or scheduling into a past opening
+- Enforce minimum appointment durations
+- Mark openings as surgery openings when longer appointment timing is required
 - Add, edit, or remove providers
 - Automatically purge openings 14 days after they have passed
 
@@ -27,7 +28,7 @@ The waitlist displays all current patients waiting for an appointment. Separate 
 - Sort active waitlist patients by date added, name, provider, tier, or status
 - Add, edit, or remove patients from the waitlist
 - Prevent duplicate or overlapping availability time ranges
-- Truncate long reasons in table/card views while allowing the full reason to be viewed when selected
+- Truncate long reasons in table and card views while allowing the full reason to be viewed when selected
 - View scheduled patients
 - View removed patients
 - Delete scheduled or removed records when needed
@@ -50,38 +51,17 @@ Excel imports support flexible column order when a header row is included. If no
 | Available Days  |       No | `Dates`, `Available Days`, `Days`                  | `M`, `Mon`, `Monday`, `Tu`, `Tue`, `Tuesday`, `W`, `Wed`, `Wednesday`, `Th`, `Thu`, `Thursday`, `F`, `Fri`, `Friday`, `Any`, blank | Multiple values can be separated by spaces, commas, semicolons, or slashes. Blank or `Any` means any day. Weekends are not supported.                                                                                                    |
 | Available Times |       No | `Times`, `Available Times`, `Availability`, `Time` | `8am-12pm`, `8:00am-12:00pm`, `8-12pm`, `1pm-3pm`, `8am to 12pm`, `8am-12pm, 1pm-3pm`, `Any`, blank                                | Multiple time ranges can be separated by commas or semicolons. Blank or `Any` means any time. Times must be within 8:00 AM–6:00 PM, each range must contain at least one full hour, and duplicate or overlapping ranges are not allowed. |
 
-## Database and Backups
+## Local Data and Backups
 
-Appointment Manager stores data locally using SQLite. The app saves providers, openings, waitlist entries, scheduled records, and removed records so the data persists after the desktop app is closed.
+Appointment Manager stores data locally on the computer where the app is installed. The app does not upload patient, provider, appointment, waitlist, backup, or import/export data to a server.
 
-The app includes backup tools for protecting local data. Users can export a full JSON backup, import a previous backup, restore the latest automatic backup, open the backup folder, and manually delete old automatic backups from inside the app.
+The local database and full app backups are encrypted before being written to disk. Excel imports and exports are separate files created only when the user chooses to import or export waitlist data.
+
+Backups are intended for restoring data on the same computer. If the app needs to be moved to another computer, the data should be migrated separately.
+
+Automatic backups are created before major data changes such as saves, imports, resets, and restores. Automatic backups are kept for up to one year, with a maximum retained backup count.
 
 Backups are separate from Excel imports and exports. Excel files are used for waitlist data transfer, while backups are used to preserve and restore the full local application state.
-
-Automatic backups are kept for up to one year. Older automatic backups are deleted to reduce long term storage of outdated patient records.
-
-## Performance Benchmark
-
-The SQLite persistence layer was benchmarked with generated appointment and waitlist records to validate local storage performance.
-
-| Records | Payload Size | Read p95 | Write p95 |
-| ------: | -----------: | -------: | --------: |
-|     100 |      33.1 KB | 0.157 ms |  0.904 ms |
-|     500 |     164.9 KB | 0.337 ms |  2.051 ms |
-|   1,000 |     329.6 KB | 0.555 ms |  3.506 ms |
-|   2,500 |     828.7 KB | 1.297 ms | 14.644 ms |
-|   5,000 |      1.66 MB | 2.625 ms |  7.922 ms |
-|  10,000 |      3.33 MB | 5.520 ms | 15.674 ms |
-
-Raw SQLite primary key lookup measured 0.010 ms p95 across 1,000 reads. A real changed save with backup creation enabled measured 1.884 ms p95 on the current application dataset.
-
-These results show that SQLite lookup time is effectively negligible for the current storage model. The dominant persistence cost is JSON serialization and writing the application state payload, but a 10,000 record generated dataset still remained below 6 ms p95 for reads and below 16 ms p95 for writes.
-
-## Data Privacy
-
-Appointment Manager stores data locally on the user's machine. Patient data, SQLite database files, Excel exports, JSON backups, and backup folders should not be committed to GitHub.
-
-Backups may contain patient records that were later edited, removed, or purged from the active app state.
 
 ## Tech Stack
 
@@ -94,16 +74,16 @@ Backups may contain patient records that were later edited, removed, or purged f
 
 ## Screenshots
 
-![Calender Example](examples/calendar-example.png)
+![Calendar Example](examples/calendar-example.png)
 
 ![Waitlist Example](examples/waitlist-example.png)
 
 ## Future Improvements
 
 - Send automated text messages when scheduling a patient
-- Support military time if needed
 - Improve scheduling notifications and reminders
-- Better recovery method (only toggels w/ last backup)
+- Add a selected backup restore screen so users can choose a specific backup by date
+- Add a formal computer migration workflow for encrypted backups
 
 ## License
 

@@ -50,15 +50,24 @@ Thumbs.db
 *.sqlite3
 *.db-journal
 *.sqlite-journal
+*.sqlite3-journal
 *.db-wal
 *.sqlite-wal
+*.sqlite3-wal
 *.db-shm
 *.sqlite-shm
+*.sqlite3-shm
 
 # Local backups
 backups/
 *.bak
 *.backup
+
+# Local encryption keys / secrets
+*.key
+*.pem
+*.p12
+*.pfx
 
 # Local app data folders if accidentally created in the project
 data/
