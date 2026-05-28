@@ -7,9 +7,6 @@
  * without written permission from the copyright owner.
  */
 
-// Backsups, be able to go back more not just toggle
-// How to maintain if necessary - for now maybe not needed.
-
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import ExcelJS, { type CellValue } from "exceljs";
 import "./App.css";
@@ -269,7 +266,6 @@ function App(){
     setOpenings(prev =>
       filterWithoutStateChange(prev, o => !isDateOlderThanRetentionDays(o.date, today)),
     );
-
     setScheduledRecords(prev => {
       const stale = new Set(
         prev

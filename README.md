@@ -69,7 +69,7 @@ Backups are separate from Excel imports and exports. Excel files are used for wa
 - TypeScript
 - Electron
 - SQLite
-- SheetJS
+- ExcelJS
 - CSS
 
 ## Screenshots
@@ -84,6 +84,7 @@ Backups are separate from Excel imports and exports. Excel files are used for wa
 - Improve scheduling notifications and reminders
 - Add a selected backup restore screen so users can choose a specific backup by date
 - Add a formal computer migration workflow for encrypted backups
+- Extract utilities and helpers from App.tsx
 
 ## License
 
