@@ -16,8 +16,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:win:arm64": "npm run build && electron-builder --win --arm64",
+    "dist:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
